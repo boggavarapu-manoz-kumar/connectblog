@@ -33,6 +33,15 @@ const userSchema = new mongoose.Schema({
         maxlength: [250, 'Bio cannot be more than 250 characters'],
         default: ''
     },
+    pronouns: {
+        type: String,
+        maxlength: [50, 'Pronouns cannot be more than 50 characters'],
+        default: ''
+    },
+    coverImage: {
+        type: String,
+        default: ''
+    },
     role: {
         type: String,
         enum: ['user', 'admin'],

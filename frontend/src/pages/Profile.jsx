@@ -5,6 +5,7 @@ import api from '../services/api';
 import PostCard from '../components/post/PostCard';
 import { User, Users, FileText, Settings, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import EditProfileModal from '../components/profile/EditProfileModal';
 
 const Profile = () => {
     const { id } = useParams();
@@ -16,6 +17,7 @@ const Profile = () => {
     const [loading, setLoading] = useState(true);
     const [isFollowing, setIsFollowing] = useState(false);
     const [stats, setStats] = useState({ followers: 0, following: 0, posts: 0 });
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
     // Determine which ID to fetch (url param or logged-in user)
     const userId = id || currentUser?._id;
@@ -107,22 +109,40 @@ const Profile = () => {
             <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
 
                 {/* Profile Header Card */}
-                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-8">
-                    <div className="bg-gradient-to-r from-primary-500 to-primary-600 h-32 sm:h-48"></div>
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-8 relative">
+                    <div className="h-32 sm:h-56 bg-gradient-to-r from-primary-500 to-primary-600 w-full relative">
+                        {profileUser.coverImage && (
+                            <img
+                                src={profileUser.coverImage}
+                                alt="Cover Banner"
+                                className="w-full h-full object-cover absolute inset-0"
+                            />
+                        )}
+                    </div>
                     <div className="px-6 sm:px-10 pb-8 relative">
-                        <div className="flex flex-col sm:flex-row items-center sm:items-end -mt-12 sm:-mt-16 mb-6">
+                        <div className="flex flex-col sm:flex-row items-center sm:items-end -mt-16 sm:-mt-20 mb-6 relative z-10">
                             <img
                                 src={profileUser.profilePic}
                                 alt={profileUser.username}
-                                className="w-24 h-24 sm:w-32 sm:h-32 rounded-full border-4 border-white shadow-md object-cover"
+                                className="w-28 h-28 sm:w-36 sm:h-36 rounded-full border-4 border-white shadow-md object-cover bg-white"
                             />
-                            <div className="mt-4 sm:mt-0 sm:ml-6 text-center sm:text-left flex-1">
-                                <h1 className="text-2xl font-bold text-gray-900">{profileUser.username}</h1>
-                                <p className="text-gray-500 text-sm">{profileUser.email}</p>
+                            <div className="mt-4 sm:mt-0 sm:ml-6 text-center sm:text-left flex-1 pb-2">
+                                <h1 className="text-2xl font-bold text-gray-900 flex items-center justify-center sm:justify-start gap-2">
+                                    {profileUser.username}
+                                    {profileUser.pronouns && (
+                                        <span className="text-sm font-normal text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                                            {profileUser.pronouns}
+                                        </span>
+                                    )}
+                                </h1>
+                                <p className="text-gray-500 text-sm mt-1">{profileUser.email}</p>
                             </div>
-                            <div className="mt-4 sm:mt-0">
+                            <div className="mt-4 sm:mt-0 pb-2">
                                 {isOwnProfile ? (
-                                    <button className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium transition-colors">
+                                    <button
+                                        onClick={() => setIsEditModalOpen(true)}
+                                        className="flex items-center space-x-2 px-5 py-2 border border-gray-300 rounded-full text-gray-700 hover:bg-gray-50 font-medium transition-colors shadow-sm"
+                                    >
                                         <Settings size={18} />
                                         <span>Edit Profile</span>
                                     </button>
@@ -130,8 +150,8 @@ const Profile = () => {
                                     <button
                                         onClick={handleFollowToggle}
                                         className={`px-6 py-2 rounded-lg font-medium shadow-sm transition-all ${isFollowing
-                                                ? 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
-                                                : 'bg-primary-600 text-white hover:bg-primary-700 hover:shadow-md'
+                                            ? 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                                            : 'bg-primary-600 text-white hover:bg-primary-700 hover:shadow-md'
                                             }`}
                                     >
                                         {isFollowing ? 'Unfollow' : 'Follow'}
@@ -194,6 +214,15 @@ const Profile = () => {
                         </div>
                     )}
                 </div>
+
+                <EditProfileModal
+                    isOpen={isEditModalOpen}
+                    onClose={() => setIsEditModalOpen(false)}
+                    userProfile={profileUser}
+                    onProfileUpdate={(updatedUser) => {
+                        setProfileUser(updatedUser);
+                    }}
+                />
 
             </div>
         </div>

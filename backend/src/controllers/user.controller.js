@@ -27,8 +27,10 @@ const updateUserProfile = async (req, res) => {
         if (user) {
             user.username = req.body.username || user.username;
             user.email = req.body.email || user.email;
-            user.bio = req.body.bio || user.bio;
+            user.bio = req.body.bio !== undefined ? req.body.bio : user.bio;
+            user.pronouns = req.body.pronouns !== undefined ? req.body.pronouns : user.pronouns;
             user.profilePic = req.body.profilePic || user.profilePic;
+            user.coverImage = req.body.coverImage !== undefined ? req.body.coverImage : user.coverImage;
 
             if (req.body.password) {
                 user.password = req.body.password;
@@ -42,7 +44,9 @@ const updateUserProfile = async (req, res) => {
                 email: updatedUser.email,
                 role: updatedUser.role,
                 bio: updatedUser.bio,
+                pronouns: updatedUser.pronouns,
                 profilePic: updatedUser.profilePic,
+                coverImage: updatedUser.coverImage,
                 token: req.body.token // Preserve token if needed, or rely on existing
             });
         } else {

@@ -1,0 +1,21 @@
+LOG: [vite] connecting...
+LOG: [vite] connected.
+LOG: %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold
+LOG: ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+LOG: ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+ERROR: Cannot read properties of undefined (reading '_id')
+ERROR: Cannot read properties of undefined (reading '_id')
+LOG: The above error occurred in the <PostDetail> component:
+
+    at PostDetail (http://localhost:3000/src/pages/PostDetail.jsx:27:18)
+    at RenderedRoute (http://localhost:3000/node_modules/.vite/deps/react-router-dom.js?v=ef6b394d:4131:5)
+    at Routes (http://localhost:3000/node_modules/.vite/deps/react-router-dom.js?v=ef6b394d:4601:5)
+    at div
+    at Router (http://localhost:3000/node_modules/.vite/deps/react-router-dom.js?v=ef6b394d:4544:15)
+    at BrowserRouter (http://localhost:3000/node_modules/.vite/deps/react-router-dom.js?v=ef6b394d:5290:5)
+    at AuthProvider (http://localhost:3000/src/context/AuthContext.jsx?t=1771642224297:22:32)
+    at App
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+ERROR: Cannot read properties of undefined (reading '_id')

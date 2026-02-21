@@ -1,17 +1,39 @@
-// @desc    Get all posts (with sorting algorithm)
-// @route   GET /api/posts?sort=latest|trending
-// @access  Public
 const Post = require('../models/Post.model');
 const User = require('../models/User.model');
+const mongoose = require('mongoose');
+
 const getPosts = async (req, res) => {
     try {
-        const { sort } = req.query;
+        const { sort, search, author, archived } = req.query;
+        const page = parseInt(req.query.page, 10) || 1;
+        const limit = parseInt(req.query.limit, 10) || 10;
+        const skip = (page - 1) * limit;
+
         let posts;
 
+        // Build search query match block
+        let matchStage = { isArchived: archived === 'true' };
+
+        if (search) {
+            const searchRegex = { $regex: search, $options: 'i' };
+            matchStage.$or = [
+                { title: searchRegex },
+                { content: searchRegex },
+                { hashtags: searchRegex }
+            ];
+        }
+
+        if (author) {
+            if (mongoose.Types.ObjectId.isValid(author)) {
+                matchStage.author = new mongoose.Types.ObjectId(author);
+            }
+        }
+
         if (sort === 'trending') {
-            // Best Feed Algorithm: Prioritize posts with most engagement (likes + comments)
-            // Using aggregation pipeline for efficient sorting
-            posts = await Post.aggregate([
+            const pipeline = [];
+            if (Object.keys(matchStage).length > 0) pipeline.push({ $match: matchStage });
+
+            pipeline.push(
                 {
                     $lookup: {
                         from: 'users',
@@ -20,32 +42,129 @@ const getPosts = async (req, res) => {
                         as: 'authorDetails'
                     }
                 },
-                { $unwind: '$authorDetails' }, // Flatten array
+                { $unwind: '$authorDetails' },
                 {
                     $addFields: {
                         engagementScore: {
                             $add: [
                                 { $size: { $ifNull: ["$likes", []] } },
-                                { $multiply: [{ $size: { $ifNull: ["$comments", []] } }, 2] } // Weigh comments x2
+                                { $multiply: [{ $size: { $ifNull: ["$comments", []] } }, 2] }
                             ]
                         },
-                        author: { // Project author details we need
+                        author: {
                             _id: '$authorDetails._id',
                             username: '$authorDetails.username',
                             profilePic: '$authorDetails.profilePic'
                         }
                     }
                 },
-                { $sort: { engagementScore: -1, createdAt: -1 } } // Sort by Score DESC, then Date DESC
-            ]);
+                { $sort: { engagementScore: -1, createdAt: -1 } },
+                { $skip: skip },
+                { $limit: limit }
+            );
 
-            // Note: Since aggregate returns POJOs, not Mongoose docs, we might miss virtuals but for this use case it's fine.
-            // Alternatively, fetch IDs and populate.
+            posts = await Post.aggregate(pipeline);
+            posts = await Post.populate(posts, {
+                path: 'comments',
+                populate: {
+                    path: 'user',
+                    select: 'username profilePic'
+                }
+            });
+        } else if (!search && !author) {
+            // Instagram-Style Algorithmic Feed
+            // Blends: Popularity (Likes/Comments) + Personalization (Follows) + Freshness (Time Decay)
+            const pipeline = [];
+            if (Object.keys(matchStage).length > 0) pipeline.push({ $match: matchStage });
+
+            pipeline.push(
+                {
+                    $lookup: {
+                        from: 'users',
+                        localField: 'author',
+                        foreignField: '_id',
+                        as: 'authorDetails'
+                    }
+                },
+                { $unwind: '$authorDetails' },
+                {
+                    $addFields: {
+                        // 1. Calculate base engagement popularity
+                        basePopularity: {
+                            $add: [
+                                { $size: { $ifNull: ["$likes", []] } },
+                                { $multiply: [{ $size: { $ifNull: ["$comments", []] } }, 2] }
+                            ]
+                        },
+
+                        // 2. Personalization - check if current user follows the author
+                        isFollowingAuthor: req.user ? {
+                            $in: [
+                                new mongoose.Types.ObjectId(req.user._id),
+                                { $ifNull: ["$authorDetails.followers", []] }
+                            ]
+                        } : false,
+
+                        // 3. Time decay - hours since post was created
+                        hoursOld: {
+                            $divide: [
+                                { $subtract: [new Date(), "$createdAt"] },
+                                1000 * 60 * 60
+                            ]
+                        },
+
+                        author: {
+                            _id: '$authorDetails._id',
+                            username: '$authorDetails.username',
+                            profilePic: '$authorDetails.profilePic'
+                        }
+                    }
+                },
+                {
+                    $addFields: {
+                        // 4. Algorithm Score Formula:
+                        // (Base Popularity) + (Follower Boost: +50) - (Decay: 0.5 per hour)
+                        // Ensures posts from friends float to top, but huge viral posts can still compete
+                        algoScore: {
+                            $subtract: [
+                                {
+                                    $add: [
+                                        "$basePopularity",
+                                        { $cond: ["$isFollowingAuthor", 50, 0] }
+                                    ]
+                                },
+                                { $multiply: ["$hoursOld", 0.5] }
+                            ]
+                        }
+                    }
+                },
+                { $sort: { algoScore: -1, createdAt: -1 } },
+                { $skip: skip },
+                { $limit: limit }
+            );
+
+            posts = await Post.aggregate(pipeline);
+            posts = await Post.populate(posts, {
+                path: 'comments',
+                populate: {
+                    path: 'user',
+                    select: 'username profilePic'
+                }
+            });
         } else {
-            // Default: Latest (Date DESC)
-            posts = await Post.find()
+            // Standard deterministic search/author queries
+            posts = await Post.find(matchStage)
                 .populate('author', 'username profilePic')
-                .sort({ createdAt: -1 });
+                .populate({
+                    path: 'comments',
+                    populate: {
+                        path: 'user',
+                        select: 'username profilePic'
+                    }
+                })
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit);
         }
 
         res.status(200).json(posts);
@@ -61,7 +180,14 @@ const getPosts = async (req, res) => {
 const getPost = async (req, res) => {
     try {
         const post = await Post.findById(req.params.id)
-            .populate('author', 'username profilePic bio');
+            .populate('author', 'username profilePic bio')
+            .populate({
+                path: 'comments',
+                populate: {
+                    path: 'user',
+                    select: 'username profilePic bio'
+                }
+            });
 
         if (!post) {
             return res.status(404).json({ message: 'Post not found' });
@@ -77,7 +203,7 @@ const getPost = async (req, res) => {
 // @access  Private
 const createPost = async (req, res) => {
     try {
-        const { title, content, image } = req.body;
+        const { title, content, image, hashtags } = req.body;
 
         if (!title || !content) {
             return res.status(400).json({ message: 'Please add all fields' });
@@ -87,7 +213,8 @@ const createPost = async (req, res) => {
             title,
             content,
             image,
-            author: req.user.id
+            author: req.user.id,
+            hashtags: Array.isArray(hashtags) ? hashtags : []
         });
 
         const fullPost = await Post.findById(post._id).populate('author', 'username profilePic');
@@ -109,12 +236,6 @@ const updatePost = async (req, res) => {
             return res.status(404).json({ message: 'Post not found' });
         }
 
-        // Check for user
-        if (!req.user) {
-            return res.status(401).json({ message: 'User not found' });
-        }
-
-        // Make sure the logged in user matches the post author
         if (post.author.toString() !== req.user.id) {
             return res.status(401).json({ message: 'User not authorized' });
         }
@@ -141,21 +262,13 @@ const deletePost = async (req, res) => {
             return res.status(404).json({ message: 'Post not found' });
         }
 
-        // Check for user
-        if (!req.user) {
-            return res.status(401).json({ message: 'User not found' });
-        }
-
-        // Make sure the logged in user matches the post author
         if (post.author.toString() !== req.user.id) {
             return res.status(401).json({ message: 'User not authorized' });
         }
 
         await post.deleteOne();
-
         res.status(200).json({ id: req.params.id });
     } catch (error) {
-        console.log(error);
         res.status(500).json({ message: error.message });
     }
 };
@@ -171,7 +284,6 @@ const likePost = async (req, res) => {
             return res.status(404).json({ message: 'Post not found' });
         }
 
-        // Check if the post has already been liked
         if (post.likes.includes(req.user.id)) {
             return res.status(400).json({ message: 'Post already liked' });
         }
@@ -181,7 +293,6 @@ const likePost = async (req, res) => {
 
         res.status(200).json(post.likes);
     } catch (error) {
-        console.error(error.message);
         res.status(500).send('Server Error');
     }
 };
@@ -197,20 +308,71 @@ const unlikePost = async (req, res) => {
             return res.status(404).json({ message: 'Post not found' });
         }
 
-        // Check if the post has not yet been liked
         if (!post.likes.includes(req.user.id)) {
             return res.status(400).json({ message: 'Post has not yet been liked' });
         }
 
-        // Remove user from likes
         const index = post.likes.indexOf(req.user.id);
         post.likes.splice(index, 1);
         await post.save();
 
         res.status(200).json(post.likes);
     } catch (error) {
-        console.error(error.message);
         res.status(500).send('Server Error');
+    }
+};
+
+const getBookmarkedPosts = async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        const posts = await Post.find({ _id: { $in: user.bookmarks } })
+            .populate('author', 'username profilePic')
+            .populate({
+                path: 'comments',
+                populate: {
+                    path: 'user',
+                    select: 'username profilePic'
+                }
+            })
+            .sort({ createdAt: -1 });
+
+        res.status(200).json(posts);
+    } catch (error) {
+        console.error('Error in getBookmarkedPosts:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const getUserPosts = async (req, res) => {
+    try {
+        const { userId } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(userId)) {
+            return res.status(400).json({ message: 'Invalid user ID' });
+        }
+
+        const posts = await Post.find({
+            author: new mongoose.Types.ObjectId(userId),
+            isArchived: false
+        })
+            .populate('author', 'username profilePic')
+            .populate({
+                path: 'comments',
+                populate: {
+                    path: 'user',
+                    select: 'username profilePic'
+                }
+            })
+            .sort({ createdAt: -1 });
+
+        res.status(200).json(posts);
+    } catch (error) {
+        console.error('Error in getUserPosts:', error);
+        res.status(500).json({ message: error.message });
     }
 };
 
@@ -222,4 +384,6 @@ module.exports = {
     deletePost,
     likePost,
     unlikePost,
+    getBookmarkedPosts,
+    getUserPosts
 };

@@ -26,7 +26,7 @@ const userSchema = new mongoose.Schema({
     },
     profilePic: {
         type: String,
-        default: 'https://icon-library.com/images/anonymous-avatar-icon/anonymous-avatar-icon-25.jpg'
+        default: ''
     },
     bio: {
         type: String,
@@ -42,6 +42,13 @@ const userSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
+    socialLinks: {
+        instagram: { type: String, default: '' },
+        facebook: { type: String, default: '' },
+        linkedin: { type: String, default: '' },
+        leetcode: { type: String, default: '' },
+        portfolio: { type: String, default: '' }
+    },
     role: {
         type: String,
         enum: ['user', 'admin'],
@@ -54,7 +61,15 @@ const userSchema = new mongoose.Schema({
     following: [{
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User'
-    }]
+    }],
+    bookmarks: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Post'
+    }],
+    coins: {
+        type: Number,
+        default: 0
+    }
 }, {
     timestamps: true
 });

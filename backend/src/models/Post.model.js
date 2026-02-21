@@ -15,6 +15,10 @@ const postSchema = new mongoose.Schema({
         type: String,
         default: 'https://via.placeholder.com/600x400.png?text=No+Image'
     },
+    hashtags: [{
+        type: String,
+        trim: true
+    }],
     author: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
@@ -27,7 +31,11 @@ const postSchema = new mongoose.Schema({
     comments: [{
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Comment'
-    }]
+    }],
+    isArchived: {
+        type: Boolean,
+        default: false
+    }
 }, {
     timestamps: true
 });

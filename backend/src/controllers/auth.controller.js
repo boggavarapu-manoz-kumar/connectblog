@@ -26,7 +26,11 @@ const registerUser = async (req, res) => {
                 _id: user._id,
                 username: user.username,
                 email: user.email,
+                profilePic: user.profilePic,
                 role: user.role,
+                bookmarks: user.bookmarks || [],
+                followers: user.followers || [],
+                following: user.following || [],
                 token: generateToken(user._id)
             });
         } else {
@@ -52,7 +56,11 @@ const loginUser = async (req, res) => {
                 _id: user._id,
                 username: user.username,
                 email: user.email,
+                profilePic: user.profilePic,
                 role: user.role,
+                bookmarks: user.bookmarks || [],
+                followers: user.followers || [],
+                following: user.following || [],
                 token: generateToken(user._id)
             });
         } else {

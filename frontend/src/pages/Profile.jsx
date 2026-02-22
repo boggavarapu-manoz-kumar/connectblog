@@ -31,24 +31,26 @@ const Profile = () => {
             return data;
         },
         enabled: !authLoading && !!targetUserId,
-        staleTime: 1000 * 60 * 5, // 5 minutes cache
+        staleTime: 1000 * 60 * 10, // 10 minutes cache (Best Ever)
     });
 
     // Query 2: User's Public Posts
-    const { data: posts = [], isLoading: postsLoading, refetch: refetchPosts } = useQuery({
+    const { data: postsData, isLoading: postsLoading, refetch: refetchPosts } = useQuery({
         queryKey: ['profile-posts', targetUserId],
         queryFn: async () => {
             const { data } = await api.get(`/posts/user/${targetUserId}`);
             return data;
         },
         enabled: !!profileUser?._id,
-        staleTime: 1000 * 60 * 2, // 2 minutes cache
+        staleTime: 1000 * 60 * 10, // 10 minutes cache (Best Ever)
     });
+
+    const posts = postsData?.posts || [];
 
     const isOwnProfile = profileUser?._id === (currentUser?._id || currentUser?.id);
 
     // Query 3: Private Data (Archived & Saved) - Only for Owner
-    const { data: privateData, isLoading: privateLoading } = useQuery({
+    const { data: privateDataRaw, isLoading: privateLoading } = useQuery({
         queryKey: ['profile-private', profileUser?._id],
         queryFn: async () => {
             const [archivedRes, savedRes] = await Promise.all([
@@ -56,13 +58,15 @@ const Profile = () => {
                 api.get('/posts/bookmarks')
             ]);
             return {
-                archived: archivedRes.data,
-                saved: savedRes.data
+                archived: archivedRes.data.posts,
+                saved: savedRes.data.posts
             };
         },
         enabled: !!profileUser?._id && isOwnProfile,
         staleTime: 1000 * 60 * 5,
     });
+
+    const privateData = privateDataRaw || { archived: [], saved: [] };
 
     // Follow Mutation for Instant UI Updates (Optimistic)
     const followMutation = useMutation({
@@ -336,6 +340,7 @@ const Profile = () => {
                     userProfile={profileUser}
                     onProfileUpdate={() => {
                         queryClient.invalidateQueries({ queryKey: ['profile', targetUserId] });
+                        queryClient.invalidateQueries({ queryKey: ['posts-feed'] });
                     }}
                 />
             </div>

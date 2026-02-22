@@ -38,17 +38,16 @@ const Home = () => {
         queryKey: ['posts-feed', searchQuery],
         queryFn: async ({ pageParam = 1 }) => {
             const endpoint = searchQuery
-                ? `/posts?page=${pageParam}&limit=5&search=${encodeURIComponent(searchQuery)}`
-                : `/posts?page=${pageParam}&limit=5`;
+                ? `/posts?page=${pageParam}&limit=10&search=${encodeURIComponent(searchQuery)}`
+                : `/posts?page=${pageParam}&limit=10`;
             const { data } = await api.get(endpoint);
-            return data;
+            return data; // returns { posts, totalPosts, hasMore, ... }
         },
         initialPageParam: 1,
-        getNextPageParam: (lastPage, allPages) => {
-            // If last page has 5 items (our limit), there's likely more
-            return lastPage.length === 5 ? allPages.length + 1 : undefined;
+        getNextPageParam: (lastPage) => {
+            return lastPage.hasMore ? lastPage.currentPage + 1 : undefined;
         },
-        staleTime: 1000 * 60 * 2, // 2 mins stale time for main feed
+        staleTime: 1000 * 60 * 15, // 15 mins stale time (Best Ever Caching)
     });
 
     const observer = useRef();
@@ -68,7 +67,7 @@ const Home = () => {
         window.scrollTo(0, 0);
     }, [searchQuery]);
 
-    const allPosts = data?.pages.flatMap(page => page) || [];
+    const allPosts = data?.pages.flatMap(page => page.posts) || [];
 
     return (
         <div className="pb-12">

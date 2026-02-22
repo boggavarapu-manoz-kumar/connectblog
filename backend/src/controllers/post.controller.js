@@ -175,7 +175,17 @@ const getPosts = async (req, res) => {
                 .lean();
         }
 
-        res.status(200).json(posts);
+        // Calculate total for metadata
+        const totalPosts = await Post.countDocuments(matchStage);
+        const totalPages = Math.ceil(totalPosts / limit);
+
+        res.status(200).json({
+            posts,
+            totalPosts,
+            totalPages,
+            currentPage: page,
+            hasMore: page < totalPages
+        });
     } catch (error) {
         console.error('Error in getPosts:', error);
         res.status(500).json({ message: error.message });
@@ -355,7 +365,7 @@ const getBookmarkedPosts = async (req, res) => {
             .sort({ createdAt: -1 })
             .lean();
 
-        res.status(200).json(posts);
+        res.status(200).json({ posts });
     } catch (error) {
         console.error('Error in getBookmarkedPosts:', error);
         res.status(500).json({ message: error.message });
@@ -379,7 +389,7 @@ const getUserPosts = async (req, res) => {
             .sort({ createdAt: -1 })
             .lean();
 
-        res.status(200).json(posts);
+        res.status(200).json({ posts });
     } catch (error) {
         console.error('Error in getUserPosts:', error);
         res.status(500).json({ message: error.message });

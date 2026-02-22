@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 import { Image, Send, X } from 'lucide-react';
@@ -8,20 +10,21 @@ import 'react-quill/dist/quill.snow.css';
 import imageCompression from 'browser-image-compression';
 
 const CreatePost = () => {
+    const { user } = useAuth();
+    const navigate = useNavigate();
+    const queryClient = useQueryClient();
+
     const [title, setTitle] = useState('');
     const [content, setContent] = useState('');
     const [imageUrl, setImageUrl] = useState('');
     const [uploadingImage, setUploadingImage] = useState(false);
     const [hashtags, setHashtags] = useState([]);
     const [tagInput, setTagInput] = useState('');
-    const [loading, setLoading] = useState(false);
-    const navigate = useNavigate();
 
     const handleImageUpload = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
 
-        // Validation: Only images
         if (!file.type.startsWith('image/')) {
             toast.error('Please upload an image file');
             return;
@@ -31,18 +34,14 @@ const CreatePost = () => {
         setUploadingImage(true);
 
         try {
-            // 🚀 Algorithm 1: Client-Side Compression
-            // This reduces 10MB photos to ~200KB-500KB instantly
             const compressionOptions = {
-                maxSizeMB: 0.8, // Target size under 1MB
-                maxWidthOrHeight: 1200, // Instagram-like dimensions
+                maxSizeMB: 0.8,
+                maxWidthOrHeight: 1200,
                 useWebWorker: true,
                 initialQuality: 0.8
             };
 
             const compressedFile = await imageCompression(file, compressionOptions);
-
-            // 🚀 Algorithm 2: Native Stream Transmission
             const formData = new FormData();
             formData.append('image', compressedFile);
 
@@ -53,36 +52,41 @@ const CreatePost = () => {
             setImageUrl(data.url);
             toast.success('Ready to publish!', { id: toastId });
         } catch (error) {
-            toast.error('Upload failed. Using direct compression retry...', { id: toastId });
-            console.error(error);
+            toast.error('Upload failed.', { id: toastId });
         } finally {
             setUploadingImage(false);
         }
     };
 
-    const handleSubmit = async (e) => {
+    const createPostMutation = useMutation({
+        mutationFn: async (postData) => {
+            return api.post('/posts', postData);
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['posts-feed'] });
+            queryClient.invalidateQueries({ queryKey: ['profile', (user?._id || user?.id)] });
+            queryClient.invalidateQueries({ queryKey: ['profile-posts', (user?._id || user?.id)] });
+            toast.success('Post created successfully!');
+            navigate('/');
+        },
+        onError: (error) => {
+            toast.error(error.response?.data?.message || 'Failed to create post');
+        }
+    });
+
+    const handleSubmit = (e) => {
         e.preventDefault();
-        if (!title || !content) {
+        if (!title.trim() || !content.trim()) {
             toast.error('Title and Content are required');
             return;
         }
 
-        setLoading(true);
-        try {
-            await api.post('/posts', {
-                title,
-                content,
-                hashtags,
-                image: imageUrl
-            });
-            toast.success('Post created successfully!');
-            navigate('/');
-        } catch (error) {
-            toast.error('Failed to create post');
-            console.error(error);
-        } finally {
-            setLoading(false);
-        }
+        createPostMutation.mutate({
+            title,
+            content,
+            hashtags,
+            image: imageUrl
+        });
     };
 
     return (
@@ -96,7 +100,6 @@ const CreatePost = () => {
                 </div>
 
                 <form onSubmit={handleSubmit} className="p-6 space-y-6">
-                    {/* Title Input */}
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
                         <input
@@ -104,42 +107,31 @@ const CreatePost = () => {
                             value={title}
                             onChange={(e) => setTitle(e.target.value)}
                             placeholder="Enter a catchy title..."
-                            className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all"
+                            className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary-500 outline-none transition-all"
                             required
                         />
                     </div>
 
-                    {/* Content Rich Text */}
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Content</label>
-                        <div className="bg-white rounded-lg border border-gray-300 overflow-hidden focus-within:ring-2 focus-within:ring-primary-500 focus-within:border-transparent transition-all h-[300px] flex flex-col">
+                        <div className="bg-white rounded-lg border border-gray-300 overflow-hidden h-[300px] flex flex-col">
                             <ReactQuill
                                 theme="snow"
                                 value={content}
                                 onChange={setContent}
                                 placeholder="Write your amazing post here..."
                                 className="h-full flex-1 flex flex-col"
-                                modules={{
-                                    toolbar: [
-                                        [{ 'header': [1, 2, 3, false] }],
-                                        ['bold', 'italic', 'underline', 'strike', 'blockquote'],
-                                        [{ 'list': 'ordered' }, { 'list': 'bullet' }, { 'indent': '-1' }, { 'indent': '+1' }],
-                                        ['link', 'code-block'],
-                                        ['clean']
-                                    ],
-                                }}
                             />
                         </div>
                     </div>
 
-                    {/* Native Server Image Upload */}
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Post Image</label>
                         <div className="flex items-center space-x-4">
-                            <label className="cursor-pointer flex items-center justify-center space-x-2 px-4 py-2.5 bg-gray-50 border-2 border-dashed border-gray-300 rounded-xl hover:bg-gray-100 hover:border-primary-400 transition-all">
+                            <label className="cursor-pointer flex items-center justify-center space-x-2 px-4 py-2.5 bg-gray-50 border-2 border-dashed border-gray-300 rounded-xl hover:border-primary-400 transition-all">
                                 <Image size={20} className="text-primary-500" />
                                 <span className="font-semibold text-gray-600 text-sm">
-                                    {uploadingImage ? 'Uploading to Server...' : 'Select an Image'}
+                                    {uploadingImage ? 'Uploading...' : 'Select Image'}
                                 </span>
                                 <input
                                     type="file"
@@ -149,57 +141,39 @@ const CreatePost = () => {
                                     disabled={uploadingImage}
                                 />
                             </label>
-
-                            {/* Explicit URL Fallback Option */}
-                            <div className="flex-1 flex items-center bg-gray-50 border border-gray-200 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-primary-500 transition-all">
-                                <span className="px-3 text-xs font-bold text-gray-400 uppercase tracking-widest hidden sm:block">OR URL</span>
-                                <input
-                                    type="url"
-                                    value={imageUrl}
-                                    onChange={(e) => setImageUrl(e.target.value)}
-                                    placeholder="https://..."
-                                    className="flex-1 px-4 py-2.5 bg-transparent outline-none text-sm text-gray-700"
-                                />
-                            </div>
+                            <input
+                                type="url"
+                                value={imageUrl}
+                                onChange={(e) => setImageUrl(e.target.value)}
+                                placeholder="Or paste Image URL..."
+                                className="flex-1 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl outline-none text-sm"
+                            />
                         </div>
 
                         {imageUrl && (
-                            <div className="mt-4 relative rounded-xl overflow-hidden border-2 border-gray-100 shadow-xl group/preview">
-                                <img
-                                    src={imageUrl}
-                                    alt="Preview"
-                                    className="w-full h-64 md:h-80 object-cover transition-transform duration-500 group-hover/preview:scale-105"
-                                    onError={(e) => {
-                                        e.target.onerror = null;
-                                        e.target.src = 'https://via.placeholder.com/1200x800.png?text=Link+Ready+But+Preview+Unavailable';
-                                    }}
-                                />
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent pointer-events-none" />
+                            <div className="mt-4 relative rounded-xl overflow-hidden border-2 border-gray-100 shadow-sm">
+                                <img src={imageUrl} alt="Preview" className="w-full h-64 object-cover" />
                                 <button
                                     type="button"
                                     onClick={() => setImageUrl('')}
-                                    className="absolute top-3 right-3 p-2 bg-red-500/80 backdrop-blur-md text-white rounded-full hover:bg-red-600 transition-all shadow-lg scale-90 hover:scale-100"
+                                    className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full"
                                 >
-                                    <X size={18} />
+                                    <X size={16} />
                                 </button>
-                                <div className="absolute bottom-3 left-3 px-3 py-1 bg-green-500/90 backdrop-blur-md text-white text-[10px] font-black uppercase tracking-widest rounded-full shadow-lg">
-                                    Optimized & Ready
-                                </div>
                             </div>
                         )}
                     </div>
 
-                    {/* Hashtags Section */}
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Hashtags</label>
                         <div className="flex flex-wrap gap-2 mb-2">
                             {hashtags.map((tag, index) => (
-                                <span key={index} className="px-3 py-1 bg-primary-50 text-primary-700 text-sm font-semibold rounded-full flex items-center gap-1 border border-primary-100 shadow-sm">
+                                <span key={index} className="px-3 py-1 bg-primary-50 text-primary-700 text-sm font-semibold rounded-full flex items-center gap-1">
                                     #{tag}
                                     <button
                                         type="button"
                                         onClick={() => setHashtags(hashtags.filter((_, i) => i !== index))}
-                                        className="hover:bg-primary-200 rounded-full p-0.5 transition-colors text-primary-600 hover:text-primary-800"
+                                        className="text-primary-600 hover:text-primary-800"
                                     >
                                         <X size={14} />
                                     </button>
@@ -220,26 +194,18 @@ const CreatePost = () => {
                                     }
                                 }
                             }}
-                            placeholder="Add hashtags (press Enter or Comma)"
-                            className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all"
+                            placeholder="Add tags..."
+                            className="w-full px-4 py-2 rounded-lg border border-gray-300 outline-none"
                         />
                     </div>
 
-                    {/* Submit Button */}
                     <div className="pt-4 flex justify-end">
                         <button
                             type="submit"
-                            disabled={loading}
-                            className="flex items-center space-x-2 px-6 py-2 bg-primary-600 text-white font-medium rounded-lg hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
+                            disabled={createPostMutation.isPending}
+                            className="flex items-center space-x-2 px-8 py-2.5 bg-primary-600 text-white font-bold rounded-xl hover:bg-primary-700 transition-all disabled:opacity-50 shadow-md"
                         >
-                            {loading ? (
-                                'Publishing...'
-                            ) : (
-                                <>
-                                    <Send size={18} />
-                                    <span>Publish Post</span>
-                                </>
-                            )}
+                            {createPostMutation.isPending ? 'Publishing...' : <><Send size={18} /><span>Publish Story</span></>}
                         </button>
                     </div>
                 </form>

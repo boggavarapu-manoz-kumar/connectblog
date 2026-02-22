@@ -38,17 +38,18 @@ const PostCard = ({ post, onPostUpdate }) => {
                 if (!old) return old;
                 return {
                     ...old,
-                    pages: old.pages.map(page =>
-                        page.map(p => {
+                    pages: old.pages.map(page => ({
+                        ...page,
+                        posts: page.posts?.map(p => {
                             if (p._id === post._id) {
                                 const newLikes = liked
-                                    ? p.likes.filter(id => id !== user._id)
-                                    : [...p.likes, user._id];
+                                    ? p.likes.filter(id => id !== user?._id)
+                                    : [...(p.likes || []), user?._id];
                                 return { ...p, likes: newLikes };
                             }
                             return p;
-                        })
-                    )
+                        }) || []
+                    }))
                 };
             });
 
@@ -103,16 +104,95 @@ const PostCard = ({ post, onPostUpdate }) => {
         }
     };
 
-    const handleToggleArchive = async () => {
-        try {
-            await api.put(`/posts/${post._id}`, { isArchived: !post.isArchived });
+    // 🚀 High-Performance Mutation: DELETE (Optimistic & Instant)
+    const deleteMutation = useMutation({
+        mutationFn: async () => {
+            return api.delete(`/posts/${post._id}`);
+        },
+        onMutate: async () => {
+            const authorId = (post.author?._id || post.author || '').toString();
+            if (authorId === '[object Object]') {
+                console.error('Invalid authorId detected in deletion');
+            }
+
+            // Cancel all relevant queries
+            await queryClient.cancelQueries({ queryKey: ['posts-feed'] });
+            await queryClient.cancelQueries({ queryKey: ['profile-posts', authorId] });
+            await queryClient.cancelQueries({ queryKey: ['profile-private', authorId] });
+
+            const previousFeed = queryClient.getQueryData(['posts-feed']);
+            const previousProfilePosts = queryClient.getQueryData(['profile-posts', authorId]);
+            const previousPrivateData = queryClient.getQueryData(['profile-private', authorId]);
+
+            // 1. Instant Feed Update
+            queryClient.setQueriesData({ queryKey: ['posts-feed'] }, old => {
+                if (!old) return old;
+                return {
+                    ...old,
+                    pages: old.pages.map(page => ({
+                        ...page,
+                        posts: page.posts?.filter(p => p._id !== post._id) || []
+                    }))
+                };
+            });
+
+            // 2. Instant Profile Update
+            queryClient.setQueryData(['profile-posts', authorId], old => {
+                if (!old) return old;
+                return {
+                    ...old,
+                    posts: old.posts?.filter(p => p._id !== post._id) || []
+                };
+            });
+
+            // 3. Instant Private/Saved Update
+            queryClient.setQueryData(['profile-private', authorId], old => {
+                if (!old) return old;
+                return {
+                    ...old,
+                    archived: old.archived?.filter(p => p._id !== post._id) || [],
+                    saved: old.saved?.filter(p => p._id !== post._id) || []
+                };
+            });
+
+            toast.success('Post removed permanently');
+            return { previousFeed, previousProfilePosts, previousPrivateData, authorId };
+        },
+        onSuccess: (data, variables, context) => {
+            queryClient.invalidateQueries({ queryKey: ['profile', context.authorId] });
+            if (onPostUpdate) onPostUpdate();
+        },
+        onError: (err, variables, context) => {
+            if (context.previousFeed) queryClient.setQueryData(['posts-feed'], context.previousFeed);
+            if (context.previousProfilePosts) queryClient.setQueryData(['profile-posts', context.authorId], context.previousProfilePosts);
+            if (context.previousPrivateData) queryClient.setQueryData(['profile-private', context.authorId], context.previousPrivateData);
+            toast.error('Sync failed. Please try again.');
+        },
+        onSettled: (data, variables, context) => {
+            queryClient.invalidateQueries({ queryKey: ['posts-feed'] });
+            queryClient.invalidateQueries({ queryKey: ['profile-posts', context?.authorId] });
+            queryClient.invalidateQueries({ queryKey: ['profile-private', context?.authorId] });
+        }
+    });
+
+    // 🚀 High-Performance Mutation: ARCHIVE
+    const archiveMutation = useMutation({
+        mutationFn: async () => {
+            return api.put(`/posts/${post._id}`, { isArchived: !post.isArchived });
+        },
+        onSuccess: () => {
+            const authorId = post.author?._id || post.author;
+            queryClient.invalidateQueries({ queryKey: ['posts-feed'] });
+            queryClient.invalidateQueries({ queryKey: ['profile', authorId] });
+            queryClient.invalidateQueries({ queryKey: ['profile-private', authorId] });
             toast.success(post.isArchived ? 'Post unarchived' : 'Post archived');
             if (onPostUpdate) onPostUpdate();
-        } catch (error) {
+            setShowMenu(false);
+        },
+        onError: () => {
             toast.error('Failed to update archive status');
         }
-        setShowMenu(false);
-    };
+    });
 
     return (
         <article className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-6 hover:shadow-md transition-shadow duration-200">
@@ -136,7 +216,11 @@ const PostCard = ({ post, onPostUpdate }) => {
                 </div>
                 <div className="flex items-center space-x-1">
                     <button
-                        onClick={() => bookmarkMutation.mutate()}
+                        onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            bookmarkMutation.mutate();
+                        }}
                         className={`p-2 rounded-full transition-colors ${isBookmarked ? 'text-primary-600 bg-primary-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'}`}
                     >
                         <Bookmark size={20} className={isBookmarked ? "fill-current" : ""} />
@@ -154,17 +238,21 @@ const PostCard = ({ post, onPostUpdate }) => {
                                         <button onClick={() => navigate(`/edit-post/${post._id}`)} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
                                             <Edit size={16} /> Edit Post
                                         </button>
-                                        <button onClick={handleToggleArchive} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+                                        <button onClick={() => archiveMutation.mutate()} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
                                             <Archive size={16} /> {post.isArchived ? 'Unarchive' : 'Archive'}
                                         </button>
                                         <div className="border-t border-gray-100 my-1"></div>
-                                        <button onClick={async () => {
-                                            if (window.confirm('Delete post?')) {
-                                                await api.delete(`/posts/${post._id}`);
-                                                toast.success('Deleted');
-                                                if (onPostUpdate) onPostUpdate();
-                                            }
-                                        }} className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2">
+                                        <button
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                if (window.confirm('Delete post permanently?')) {
+                                                    deleteMutation.mutate();
+                                                }
+                                                setShowMenu(false);
+                                            }}
+                                            className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                                        >
                                             <Trash2 size={16} /> Delete Post
                                         </button>
                                     </div>

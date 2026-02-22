@@ -9,14 +9,16 @@ const Explore = () => {
         window.scrollTo(0, 0);
     }, []);
 
-    const { data: posts = [], isLoading } = useQuery({
+    const { data, isLoading } = useQuery({
         queryKey: ['explore-trending'],
         queryFn: async () => {
-            const { data } = await api.get('/posts?sort=trending&limit=24');
+            const { data } = await api.get('/posts?sort=trending&limit=10');
             return data;
         },
-        staleTime: 1000 * 60 * 5, // Cache trending posts for 5 mins
+        staleTime: 1000 * 60 * 10, // 10 minutes (Best Ever)
     });
+
+    const posts = data?.posts || [];
 
     if (isLoading) {
         return (

@@ -75,12 +75,15 @@ const Navbar = () => {
 
                         {user ? (
                             <>
-                                <button className="relative p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-full transition-colors mr-1 cursor-pointer">
+                                <Link
+                                    to="/notifications"
+                                    className="relative p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-full transition-colors mr-1 cursor-pointer"
+                                >
                                     <Bell size={20} />
                                     {unreadCount > 0 && (
                                         <span className="absolute top-1 right-1.5 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white"></span>
                                     )}
-                                </button>
+                                </Link>
                                 <Link
                                     to="/create-post"
                                     className="hidden sm:flex items-center space-x-2 px-4 py-2 text-sm font-bold text-gray-600 hover:text-primary-600 hover:bg-primary-50 rounded-xl transition-all duration-200"

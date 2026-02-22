@@ -11,6 +11,7 @@ import Profile from './pages/Profile';
 import PostDetail from './pages/PostDetail';
 import Settings from './pages/Settings';
 import Explore from './pages/Explore';
+import Notifications from './pages/Notifications';
 import { Toaster } from 'react-hot-toast';
 import ScrollToTop from './components/layout/ScrollToTop';
 
@@ -68,6 +69,14 @@ function App() {
                                     element={
                                         <ProtectedRoute>
                                             <Settings />
+                                        </ProtectedRoute>
+                                    }
+                                />
+                                <Route
+                                    path="/notifications"
+                                    element={
+                                        <ProtectedRoute>
+                                            <Notifications />
                                         </ProtectedRoute>
                                     }
                                 />

@@ -160,6 +160,13 @@ const getPosts = async (req, res) => {
             })
                 .select('title content image hashtags author createdAt likes comments')
                 .populate('author', 'username profilePic')
+                .populate({
+                    path: 'comments',
+                    populate: {
+                        path: 'user',
+                        select: 'username profilePic'
+                    }
+                })
                 .sort({ score: { $meta: 'textScore' } })
                 .skip(skip)
                 .limit(limit)
@@ -169,6 +176,13 @@ const getPosts = async (req, res) => {
             posts = await Post.find(matchStage)
                 .select('title content image hashtags author createdAt likes comments')
                 .populate('author', 'username profilePic')
+                .populate({
+                    path: 'comments',
+                    populate: {
+                        path: 'user',
+                        select: 'username profilePic'
+                    }
+                })
                 .sort({ createdAt: -1 })
                 .skip(skip)
                 .limit(limit)
@@ -362,6 +376,13 @@ const getBookmarkedPosts = async (req, res) => {
         const posts = await Post.find({ _id: { $in: user.bookmarks } })
             .select('title content image hashtags author createdAt likes comments isArchived')
             .populate('author', 'username profilePic')
+            .populate({
+                path: 'comments',
+                populate: {
+                    path: 'user',
+                    select: 'username profilePic'
+                }
+            })
             .sort({ createdAt: -1 })
             .lean();
 
@@ -386,6 +407,13 @@ const getUserPosts = async (req, res) => {
         })
             .select('title content image hashtags author createdAt likes comments')
             .populate('author', 'username profilePic')
+            .populate({
+                path: 'comments',
+                populate: {
+                    path: 'user',
+                    select: 'username profilePic'
+                }
+            })
             .sort({ createdAt: -1 })
             .lean();
 

@@ -342,6 +342,39 @@ const PostCard = ({ post, onPostUpdate }) => {
                             Post
                         </button>
                     </form>
+
+                    <div className="space-y-4 max-h-60 overflow-y-auto custom-scrollbar pr-2">
+                        {post.comments?.length > 0 ? (
+                            post.comments.map((comment) => (
+                                <div key={comment._id} className="flex space-x-3">
+                                    <Link to={`/profile/${comment.user?._id || comment.user}`}>
+                                        <img
+                                            src={comment.user?.profilePic || `https://ui-avatars.com/api/?name=${encodeURIComponent(comment.user?.username || 'User')}&background=efefef&color=333&bold=true`}
+                                            alt={comment.user?.username}
+                                            className="h-8 w-8 rounded-full object-cover border border-gray-200"
+                                        />
+                                    </Link>
+                                    <div className="flex-1 bg-white p-3 rounded-2xl shadow-sm border border-gray-100">
+                                        <div className="flex items-center justify-between mb-1">
+                                            <Link to={`/profile/${comment.user?._id || comment.user}`} className="text-sm font-bold text-gray-900 hover:text-primary-600">
+                                                {comment.user?.username}
+                                            </Link>
+                                            <span className="text-[10px] text-gray-400 font-medium lowercase">
+                                                {comment.createdAt ? formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true }) : 'just now'}
+                                            </span>
+                                        </div>
+                                        <p className="text-sm text-gray-700 leading-relaxed font-sans">
+                                            {comment.text}
+                                        </p>
+                                    </div>
+                                </div>
+                            ))
+                        ) : (
+                            <div className="text-center py-6">
+                                <p className="text-gray-400 text-sm font-medium italic">No comments yet. Be the first to start the conversation!</p>
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
         </article>

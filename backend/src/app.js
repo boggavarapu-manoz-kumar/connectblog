@@ -18,6 +18,8 @@ app.use(cookieParser());
 app.use('/api/auth', require('./routes/auth.routes'));
 app.use('/api/users', require('./routes/user.routes'));
 app.use('/api/posts', require('./routes/post.routes'));
+app.use('/api/upload', require('./routes/upload.routes'));
+app.use('/api/notifications', require('./routes/notification.routes'));
 
 // Basic Route
 app.get('/', (req, res) => {

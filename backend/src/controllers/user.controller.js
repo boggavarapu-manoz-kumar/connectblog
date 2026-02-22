@@ -1,4 +1,6 @@
 const User = require('../models/User.model');
+const Post = require('../models/Post.model');
+const { sendNotification } = require('../utils/notify');
 const mongoose = require('mongoose');
 
 // @desc    Get all users (Discovery)
@@ -42,15 +44,17 @@ const getUserProfile = async (req, res) => {
     try {
         const { id } = req.params;
 
-        if (!mongoose.Types.ObjectId.isValid(id)) {
-            console.log(`[Backend] Invalid profile ID requested: ${id}`);
-            return res.status(400).json({ message: 'Invalid user profile ID format' });
+        let user;
+
+        if (mongoose.Types.ObjectId.isValid(id)) {
+            user = await User.findById(id).select('-password');
+        } else {
+            // Routing based on exact @username string 
+            user = await User.findOne({ username: id }).select('-password');
         }
 
-        const user = await User.findById(id).select('-password');
-
         if (!user) {
-            console.log(`[Backend] Profile not found for ID: ${id}`);
+            console.log(`[Backend] Profile not found for: ${id}`);
             return res.status(404).json({ message: 'User profile not found in our database' });
         }
 
@@ -135,6 +139,13 @@ const followUser = async (req, res) => {
 
         await userToFollow.updateOne({ $push: { followers: req.user.id } });
         await currentUser.updateOne({ $push: { following: req.params.id } });
+
+        // ------------- Notify Target User ------------------
+        sendNotification(req, {
+            recipientId: req.params.id,
+            type: 'follow'
+        }).catch(console.error);
+
         return res.status(200).json({ message: 'User followed', status: 'following' });
     } catch (error) {
         res.status(500).json({ message: error.message });

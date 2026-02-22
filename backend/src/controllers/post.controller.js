@@ -1,6 +1,7 @@
 const Post = require('../models/Post.model');
 const User = require('../models/User.model');
 const mongoose = require('mongoose');
+const { sendNotification, processMentions } = require('../utils/notify');
 
 const getPosts = async (req, res) => {
     try {
@@ -219,6 +220,9 @@ const createPost = async (req, res) => {
 
         const fullPost = await Post.findById(post._id).populate('author', 'username profilePic');
 
+        // Extract mentions asynchronously without blocking UI return
+        processMentions(req, content, post._id).catch(console.error);
+
         res.status(201).json(fullPost);
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -290,6 +294,14 @@ const likePost = async (req, res) => {
 
         post.likes.push(req.user.id);
         await post.save();
+
+        // ------------------ Notification Engine Trigger ------------------
+        sendNotification(req, {
+            recipientId: post.author,
+            type: 'like',
+            post: post._id
+        }).catch(console.error);
+        // -----------------------------------------------------------------
 
         res.status(200).json(post.likes);
     } catch (error) {

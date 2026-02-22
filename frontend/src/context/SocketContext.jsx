@@ -1,0 +1,52 @@
+import { createContext, useContext, useEffect, useState } from 'react';
+import { io } from 'socket.io-client';
+import { useAuth } from './AuthContext';
+import toast from 'react-hot-toast';
+
+const SocketContext = createContext();
+
+export const useSocket = () => useContext(SocketContext);
+
+export const SocketProvider = ({ children }) => {
+    const { user } = useAuth();
+    const [socket, setSocket] = useState(null);
+    const [notifications, setNotifications] = useState([]);
+    const [unreadCount, setUnreadCount] = useState(0);
+
+    useEffect(() => {
+        if (user) {
+            // Adjust URL if your backend runs on a different port internally
+            const newSocket = io('http://localhost:5000');
+            setSocket(newSocket);
+
+            newSocket.on('connect', () => {
+                newSocket.emit('register', user._id);
+            });
+
+            newSocket.on('newNotification', (data) => {
+                // Show floating actionable toast!
+                const actionText = {
+                    like: 'liked your post',
+                    comment: 'commented on your post',
+                    follow: 'started following you',
+                    mention: 'mentioned you in a post'
+                }[data.type] || 'interacted with you';
+
+                toast(`🔔 ${data.from} ${actionText}`, {
+                    style: { background: '#0ea5e9', color: '#fff', fontWeight: 'bold' },
+                    iconTheme: { primary: '#fff', secondary: '#0ea5e9' }
+                });
+
+                setUnreadCount(prev => prev + 1);
+            });
+
+            return () => newSocket.disconnect();
+        }
+    }, [user]);
+
+    return (
+        <SocketContext.Provider value={{ socket, notifications, setNotifications, unreadCount, setUnreadCount }}>
+            {children}
+        </SocketContext.Provider>
+    );
+};

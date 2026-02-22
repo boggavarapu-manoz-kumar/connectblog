@@ -222,9 +222,9 @@ const PostCard = ({ post, onPostUpdate }) => {
                     <div className="text-gray-700 text-[14px] leading-relaxed mb-3 font-sans prose prose-sm max-w-none prose-p:my-1 text-container-styles">
                         <div
                             dangerouslySetInnerHTML={{
-                                __html: post?.content?.length > 300
+                                __html: (post?.content?.length > 300
                                     ? post.content.substring(0, 300) + '...'
-                                    : post?.content || ''
+                                    : post?.content || '').replace(/@([a-zA-Z0-9_]+)/g, '<a href="/profile/$1" style="color: #0ea5e9; font-weight: 700; text-decoration: none;" onmouseover="this.style.textDecoration=\'underline\'" onmouseout="this.style.textDecoration=\'none\'">@$1</a>')
                             }}
                         />
                         {post?.content?.length > 300 && (

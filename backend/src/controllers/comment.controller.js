@@ -1,5 +1,6 @@
 const Comment = require('../models/Comment.model');
 const Post = require('../models/Post.model');
+const { sendNotification, processMentions } = require('../utils/notify');
 
 // @desc    Add a comment
 // @route   POST /api/posts/:postId/comments
@@ -22,6 +23,17 @@ const addComment = async (req, res) => {
         // Add comment to post's comment array
         post.comments.push(comment._id);
         await post.save();
+
+        // ------------------ Notification Engine Trigger ------------------
+        await sendNotification(req, {
+            recipientId: post.author,
+            type: 'comment',
+            post: post._id
+        });
+
+        // Scan comment text for rich-text @mentions
+        await processMentions(req, text, post._id);
+        // -----------------------------------------------------------------
 
         const fullComment = await Comment.findById(comment._id).populate('user', 'username profilePic');
 

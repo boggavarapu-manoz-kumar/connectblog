@@ -8,15 +8,19 @@ import {
     User as UserIcon,
     Settings,
     Bookmark,
-    ChevronDown
+    ChevronDown,
+    Bell,
+    Compass
 } from 'lucide-react';
 import SearchBar from './SearchBar';
+import { useSocket } from '../../context/SocketContext';
 
 const Navbar = () => {
     const { user, logout } = useAuth();
     const navigate = useNavigate();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const menuRef = useRef(null);
+    const { unreadCount } = useSocket();
 
     const handleLogout = () => {
         logout();
@@ -61,8 +65,22 @@ const Navbar = () => {
 
                     {/* Navbar Action Icons */}
                     <div className="flex items-center space-x-2 sm:space-x-4">
+                        <Link
+                            to="/explore"
+                            className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-full transition-colors mr-1 sm:mr-0"
+                            title="Explore Trending Posts"
+                        >
+                            <Compass size={20} strokeWidth={2.5} />
+                        </Link>
+
                         {user ? (
                             <>
+                                <button className="relative p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-full transition-colors mr-1 cursor-pointer">
+                                    <Bell size={20} />
+                                    {unreadCount > 0 && (
+                                        <span className="absolute top-1 right-1.5 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white"></span>
+                                    )}
+                                </button>
                                 <Link
                                     to="/create-post"
                                     className="hidden sm:flex items-center space-x-2 px-4 py-2 text-sm font-bold text-gray-600 hover:text-primary-600 hover:bg-primary-50 rounded-xl transition-all duration-200"

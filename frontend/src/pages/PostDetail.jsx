@@ -265,7 +265,7 @@ const PostDetail = () => {
                         </h1>
                         <div
                             className="text-[14px] sm:text-[15px] text-gray-800 leading-[1.6] font-sans prose prose-blue max-w-none"
-                            dangerouslySetInnerHTML={{ __html: post.content || '' }}
+                            dangerouslySetInnerHTML={{ __html: (post.content || '').replace(/@([a-zA-Z0-9_]+)/g, '<a href="/profile/$1" style="color: #0ea5e9; font-weight: 700; text-decoration: none;" onmouseover="this.style.textDecoration=\'underline\'" onmouseout="this.style.textDecoration=\'none\'">@$1</a>') }}
                         />
                     </div>
 
@@ -402,9 +402,10 @@ const PostDetail = () => {
                                                 {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: false })}
                                             </span>
                                         </div>
-                                        <p className="text-gray-800 text-[13.5px] whitespace-pre-wrap mt-0.5 leading-snug">
-                                            {comment.text}
-                                        </p>
+                                        <p
+                                            className="text-gray-800 text-[13.5px] whitespace-pre-wrap mt-0.5 leading-snug"
+                                            dangerouslySetInnerHTML={{ __html: (comment.text || '').replace(/@([a-zA-Z0-9_]+)/g, '<a href="/profile/$1" style="color: #0ea5e9; font-weight: 700; text-decoration: none;" onmouseover="this.style.textDecoration=\'underline\'" onmouseout="this.style.textDecoration=\'none\'">@$1</a>') }}
+                                        />
                                     </div>
                                 </div>
                             ))}

@@ -10,10 +10,33 @@ const CreatePost = () => {
     const [title, setTitle] = useState('');
     const [content, setContent] = useState('');
     const [imageUrl, setImageUrl] = useState('');
+    const [uploadingImage, setUploadingImage] = useState(false);
     const [hashtags, setHashtags] = useState([]);
     const [tagInput, setTagInput] = useState('');
     const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
+
+    const handleImageUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const formData = new FormData();
+        formData.append('image', file);
+
+        setUploadingImage(true);
+        try {
+            const { data } = await api.post('/upload', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            setImageUrl(data.url);
+            toast.success('Image uploaded successfully!');
+        } catch (error) {
+            toast.error('Failed to upload image. Try again.');
+            console.error(error);
+        } finally {
+            setUploadingImage(false);
+        }
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -28,7 +51,7 @@ const CreatePost = () => {
                 title,
                 content,
                 hashtags,
-                image: imageUrl // In a real app, you'd upload file to Cloudinary first
+                image: imageUrl
             });
             toast.success('Post created successfully!');
             navigate('/');
@@ -87,24 +110,47 @@ const CreatePost = () => {
                         </div>
                     </div>
 
-                    {/* Image URL Input (Placeholder for actual upload) */}
+                    {/* Native Server Image Upload */}
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Image URL (Optional)</label>
-                        <div className="flex items-center space-x-2">
-                            <div className="p-2 bg-gray-100 rounded-lg">
-                                <Image size={20} className="text-gray-500" />
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Post Image</label>
+                        <div className="flex items-center space-x-4">
+                            <label className="cursor-pointer flex items-center justify-center space-x-2 px-4 py-2.5 bg-gray-50 border-2 border-dashed border-gray-300 rounded-xl hover:bg-gray-100 hover:border-primary-400 transition-all">
+                                <Image size={20} className="text-primary-500" />
+                                <span className="font-semibold text-gray-600 text-sm">
+                                    {uploadingImage ? 'Uploading to Server...' : 'Select an Image'}
+                                </span>
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={handleImageUpload}
+                                    disabled={uploadingImage}
+                                />
+                            </label>
+
+                            {/* Explicit URL Fallback Option */}
+                            <div className="flex-1 flex items-center bg-gray-50 border border-gray-200 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-primary-500 transition-all">
+                                <span className="px-3 text-xs font-bold text-gray-400 uppercase tracking-widest hidden sm:block">OR URL</span>
+                                <input
+                                    type="url"
+                                    value={imageUrl}
+                                    onChange={(e) => setImageUrl(e.target.value)}
+                                    placeholder="https://..."
+                                    className="flex-1 px-4 py-2.5 bg-transparent outline-none text-sm text-gray-700"
+                                />
                             </div>
-                            <input
-                                type="url"
-                                value={imageUrl}
-                                onChange={(e) => setImageUrl(e.target.value)}
-                                placeholder="https://example.com/image.jpg"
-                                className="flex-1 px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all"
-                            />
                         </div>
+
                         {imageUrl && (
-                            <div className="mt-4 relative rounded-lg overflow-hidden border border-gray-200">
-                                <img src={imageUrl} alt="Preview" className="w-full h-48 object-cover" />
+                            <div className="mt-4 relative rounded-xl overflow-hidden border-2 border-gray-100 shadow-sm">
+                                <img src={imageUrl} alt="Preview" className="w-full h-48 md:h-64 object-cover" />
+                                <button
+                                    type="button"
+                                    onClick={() => setImageUrl('')}
+                                    className="absolute top-2 right-2 p-1.5 bg-gray-900/50 backdrop-blur-sm text-white rounded-full hover:bg-red-500 transition-colors"
+                                >
+                                    <X size={16} />
+                                </button>
                             </div>
                         )}
                     </div>

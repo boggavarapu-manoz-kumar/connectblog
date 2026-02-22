@@ -88,10 +88,11 @@ const Navbar = () => {
                                 </Link>
                                 <Link
                                     to="/create-post"
-                                    className="hidden sm:flex items-center space-x-2 px-4 py-2 text-sm font-bold text-gray-600 hover:text-primary-600 hover:bg-primary-50 rounded-xl transition-all duration-200"
+                                    className="flex items-center space-x-1 sm:space-x-2 px-2 sm:px-4 py-2 text-sm font-bold text-gray-600 hover:text-primary-600 hover:bg-primary-50 rounded-xl transition-all duration-200"
+                                    title="Write a Post"
                                 >
-                                    <PenSquare size={18} />
-                                    <span>Write</span>
+                                    <PenSquare size={20} className="sm:w-[18px] sm:h-[18px]" />
+                                    <span className="hidden sm:block">Write</span>
                                 </Link>
 
                                 {/* User Dropdown Menu */}

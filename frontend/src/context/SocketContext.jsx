@@ -29,9 +29,14 @@ export const SocketProvider = ({ children }) => {
             };
             fetchInitialNotifications();
 
-            // Adjust URL if your backend runs on a different port internally
-            const newSocket = io('http://localhost:5000');
+            // Initialize Socket but do NOT autoConnect (prevents React 18 StrictMode double-fire crashes)
+            const newSocket = io('http://localhost:5000', { autoConnect: false });
             setSocket(newSocket);
+
+            // Start connection safely after mounting completes
+            const connectionTimeout = setTimeout(() => {
+                newSocket.connect();
+            }, 100);
 
             newSocket.on('connect', () => {
                 newSocket.emit('register', user._id);
@@ -54,7 +59,12 @@ export const SocketProvider = ({ children }) => {
                 setUnreadCount(prev => prev + 1);
             });
 
-            return () => newSocket.disconnect();
+            return () => {
+                clearTimeout(connectionTimeout);
+                if (newSocket.connected) {
+                    newSocket.disconnect();
+                }
+            };
         }
     }, [user]);
 

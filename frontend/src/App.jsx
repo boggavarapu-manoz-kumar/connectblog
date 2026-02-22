@@ -30,7 +30,7 @@ function App() {
     return (
         <AuthProvider>
             <SocketProvider>
-                <BrowserRouter>
+                <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
                     <ScrollToTop />
                     <div className="min-h-screen bg-[#f3f2ef] flex flex-col">
                         <Navbar />

@@ -1,15 +1,35 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
+const { v2: cloudinary } = require('cloudinary');
 const { protect } = require('../middleware/auth.middleware');
-const sharp = require('sharp'); // Added for high-speed compression
+const fs = require('fs');
+const path = require('path');
 
-// We use memoryStorage so the file is NEVER saved to the local disk
-const storage = multer.memoryStorage();
+cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'dfqztov62',
+    api_key: process.env.CLOUDINARY_API_KEY || '178619623668134',
+    api_secret: process.env.CLOUDINARY_API_SECRET || 'gqF7D2hF27q7t4d5PZ1Gz_p2nWY'
+});
+
+// Configure Multer to save locally first
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        const uploadDir = path.join(__dirname, '../../uploads');
+        if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true });
+        }
+        cb(null, uploadDir);
+    },
+    filename: function (req, file, cb) {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+        cb(null, 'file-' + uniqueSuffix + path.extname(file.originalname));
+    }
+});
 
 const upload = multer({
     storage: storage,
-    limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit for general uploads
+    limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
 });
 
 router.post('/', protect, upload.single('image'), async (req, res) => {
@@ -18,47 +38,15 @@ router.post('/', protect, upload.single('image'), async (req, res) => {
             return res.status(400).json({ message: 'No image provided' });
         }
 
-        // --- BLAZING FAST OPTIMIZATION PIPELINE ---
-        // Drastically reduces buffer size before making the external HTTP call to Catbox
-        // A 5MB photo compresses to ~100-200kb instantly.
-        const optimizedBuffer = await sharp(req.file.buffer)
-            .resize({ width: 1080, withoutEnlargement: true }) // Typical highest mobile width need
-            .webp({ quality: 80 }) // Next-Gen format, superior to JPEG
-            .toBuffer();
+        const localFilePath = req.file.path;
 
-        // Dynamically build a form payload directly from the compressed memory buffer
-        const formData = new FormData();
-        formData.append('reqtype', 'fileupload');
-
-        // Convert optimized Buffer to Blob
-        const blob = new Blob([optimizedBuffer], { type: 'image/webp' });
-
-        // Pass the highly-optimized image securely to Catbox
-        formData.append('fileToUpload', blob, 'optimized_image.webp');
-
-        // Upload to catbox.moe (100% Free, Permanent, No Account Needed, No Local Storage)
-        const response = await fetch('https://catbox.moe/user/api.php', {
-            method: 'POST',
-            body: formData
-        });
-
-        if (!response.ok) {
-            throw new Error(`Cloud Storage responded with status: ${response.status}`);
-        }
-
-        const uploadedUrl = await response.text();
-
-        // Validate URL format returned
-        if (!uploadedUrl.startsWith('http')) {
-            throw new Error("Invalid URL returned from Cloud Provider");
-        }
-
-        // Return the permanent, remote link to the frontend (which is then saved to DB)
-        res.status(200).json({ url: uploadedUrl });
+        // Return the locally stored file URL instantly for super fast uploads
+        const localURL = `http://localhost:5000/uploads/${req.file.filename}`;
+        return res.status(200).json({ url: localURL });
 
     } catch (error) {
-        console.error('Remote Upload Error:', error);
-        res.status(500).json({ message: 'Failed to upload image to third-party permanent storage' });
+        console.error('Core upload error:', error);
+        res.status(500).json({ message: 'Failed to upload image' });
     }
 });
 

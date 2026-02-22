@@ -12,24 +12,11 @@ cloudinary.config({
     api_secret: process.env.CLOUDINARY_API_SECRET || 'gqF7D2hF27q7t4d5PZ1Gz_p2nWY'
 });
 
-// Configure Multer to save locally first
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        const uploadDir = path.join(__dirname, '../../uploads');
-        if (!fs.existsSync(uploadDir)) {
-            fs.mkdirSync(uploadDir, { recursive: true });
-        }
-        cb(null, uploadDir);
-    },
-    filename: function (req, file, cb) {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-        cb(null, 'file-' + uniqueSuffix + path.extname(file.originalname));
-    }
-});
+const storage = multer.memoryStorage();
 
 const upload = multer({
     storage: storage,
-    limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+    limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
 });
 
 router.post('/', protect, upload.single('image'), async (req, res) => {
@@ -38,11 +25,33 @@ router.post('/', protect, upload.single('image'), async (req, res) => {
             return res.status(400).json({ message: 'No image provided' });
         }
 
-        const localFilePath = req.file.path;
+        // Convert raw image buffer into a lightweight base64 string
+        const base64Image = req.file.buffer.toString('base64');
 
-        // Return the locally stored file URL instantly for super fast uploads
-        const localURL = `http://localhost:5000/uploads/${req.file.filename}`;
-        return res.status(200).json({ url: localURL });
+        // Construct payload for FreeImage.host blazing fast API
+        const formData = new URLSearchParams();
+        formData.append('key', '6d207e02198a847aa98d0a2a901485a5'); // Public free API key
+        formData.append('action', 'upload');
+        formData.append('source', base64Image);
+        formData.append('format', 'json');
+
+        // Upload to a true 3rd-party reliable image hosting server
+        const response = await fetch('https://freeimage.host/api/1/upload', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            }
+        });
+
+        const data = await response.json();
+
+        if (data.status_code !== 200) {
+            throw new Error(data?.error?.message || "Failed to upload to 3rd-party node");
+        }
+
+        // Return the successfully hosted remote third-party URL link
+        return res.status(200).json({ url: data.image.url });
 
     } catch (error) {
         console.error('Core upload error:', error);

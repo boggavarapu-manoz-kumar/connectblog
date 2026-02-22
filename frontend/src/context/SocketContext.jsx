@@ -30,7 +30,8 @@ export const SocketProvider = ({ children }) => {
             fetchInitialNotifications();
 
             // Initialize Socket but do NOT autoConnect (prevents React 18 StrictMode double-fire crashes)
-            const newSocket = io('http://localhost:5000', { autoConnect: false });
+            const socketUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
+            const newSocket = io(socketUrl, { autoConnect: false });
             setSocket(newSocket);
 
             // Start connection safely after mounting completes

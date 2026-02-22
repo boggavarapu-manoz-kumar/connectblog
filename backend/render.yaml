@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: connectblog-backend
+    env: node
+    plan: free
+    repo: https://github.com/boggavarapu-manoz-kumar/connectblog # Adjust if repo changes
+    branch: main
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: MONGO_URI
+        sync: false # Requires manual entry of standard MongoDB Atlas URI in Render Dashboard
+      - key: JWT_SECRET
+        generateValue: true

@@ -38,7 +38,8 @@ const Profile = () => {
             return data;
         },
         enabled: !authLoading && !!targetUserId,
-        staleTime: 1000 * 60 * 10, // 10 minutes cache
+        staleTime: 1000 * 60 * 2, // 2 min — refetch quickly on navigate back
+        refetchOnMount: true,
     });
 
     // Query 2: User's Public Posts
@@ -49,7 +50,8 @@ const Profile = () => {
             return data;
         },
         enabled: !!profileUser?._id,
-        staleTime: 1000 * 60 * 10, // 10 minutes cache
+        staleTime: 1000 * 60 * 2, // 2 min — always fresh on navigate back
+        refetchOnMount: true,
     });
 
     const posts = postsData?.posts || [];
@@ -70,7 +72,8 @@ const Profile = () => {
             };
         },
         enabled: !!profileUser?._id && isOwnProfile,
-        staleTime: 1000 * 60 * 5,
+        staleTime: 1000 * 30, // 30s — always fresh for saved/archived
+        refetchOnMount: true,
     });
 
     const privateData = privateDataRaw || { archived: [], saved: [] };

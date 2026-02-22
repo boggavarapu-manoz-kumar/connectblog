@@ -111,8 +111,9 @@ const PostCard = ({ post, onPostUpdate }) => {
         onSettled: () => {
             queryClient.invalidateQueries({ queryKey: ['posts-feed'] });
             queryClient.invalidateQueries({ queryKey: ['post', post._id] });
-            queryClient.invalidateQueries({ queryKey: ['profile-posts'] });
-            queryClient.invalidateQueries({ queryKey: ['profile-private'] });
+            // Use exact: false so ALL profile-posts queries refresh (any userId)
+            queryClient.invalidateQueries({ queryKey: ['profile-posts'], exact: false });
+            queryClient.invalidateQueries({ queryKey: ['profile-private'], exact: false });
         }
     });
 

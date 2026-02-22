@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 import { Image, Send, X, Loader2 } from 'lucide-react';
@@ -8,16 +10,26 @@ import 'react-quill/dist/quill.snow.css';
 
 const EditPost = () => {
     const { id } = useParams();
+    const { user } = useAuth();
     const [title, setTitle] = useState('');
     const [content, setContent] = useState('');
     const [imageUrl, setImageUrl] = useState('');
-    const [loading, setLoading] = useState(false);
     const [fetching, setFetching] = useState(true);
     const navigate = useNavigate();
+    const queryClient = useQueryClient();
 
     useEffect(() => {
         const fetchPost = async () => {
             try {
+                // Read from cache first for instant load, fallback to API
+                const cached = queryClient.getQueryData(['post', id]);
+                if (cached) {
+                    setTitle(cached.title);
+                    setContent(cached.content);
+                    setImageUrl(cached.image || '');
+                    setFetching(false);
+                    return;
+                }
                 const { data } = await api.get(`/posts/${id}`);
                 setTitle(data.title);
                 setContent(data.content);
@@ -30,30 +42,60 @@ const EditPost = () => {
             }
         };
         fetchPost();
-    }, [id, navigate]);
+    }, [id, navigate, queryClient]);
 
-    const handleSubmit = async (e) => {
+    const updateMutation = useMutation({
+        mutationFn: async (postData) => {
+            const { data } = await api.put(`/posts/${id}`, postData);
+            return data;
+        },
+        onSuccess: (updatedPost) => {
+            const authorId = user?._id || user?.id;
+
+            // 1. Update the single post cache instantly (zero latency)
+            queryClient.setQueryData(['post', id], updatedPost);
+
+            // 2. Patch feed cache in-place — no full refetch
+            queryClient.setQueriesData({ queryKey: ['posts-feed'] }, old => {
+                if (!old?.pages) return old;
+                return {
+                    ...old,
+                    pages: old.pages.map(page => ({
+                        ...page,
+                        posts: page.posts?.map(p => p._id === id ? { ...p, ...updatedPost } : p) || []
+                    }))
+                };
+            });
+
+            // 3. Patch profile posts cache in-place
+            queryClient.setQueriesData({ queryKey: ['profile-posts'] }, old => {
+                if (!old?.posts) return old;
+                return {
+                    ...old,
+                    posts: old.posts.map(p => p._id === id ? { ...p, ...updatedPost } : p)
+                };
+            });
+
+            // 4. Background invalidation so next visit gets fresh data
+            queryClient.invalidateQueries({ queryKey: ['posts-feed'] });
+            queryClient.invalidateQueries({ queryKey: ['profile-posts', authorId] });
+            queryClient.invalidateQueries({ queryKey: ['post', id] });
+
+            toast.success('Post updated!');
+            navigate(`/posts/${id}`);
+        },
+        onError: (error) => {
+            toast.error(error.response?.data?.message || 'Failed to update post');
+        }
+    });
+
+    const handleSubmit = (e) => {
         e.preventDefault();
         if (!title || !content) {
             toast.error('Title and Content are required');
             return;
         }
-
-        setLoading(true);
-        try {
-            await api.put(`/posts/${id}`, {
-                title,
-                content,
-                image: imageUrl
-            });
-            toast.success('Post updated successfully!');
-            navigate(`/posts/${id}`);
-        } catch (error) {
-            toast.error('Failed to update post');
-            console.error(error);
-        } finally {
-            setLoading(false);
-        }
+        updateMutation.mutate({ title, content, image: imageUrl });
     };
 
     if (fetching) {
@@ -75,7 +117,6 @@ const EditPost = () => {
                 </div>
 
                 <form onSubmit={handleSubmit} className="p-6 space-y-6">
-                    {/* Title Input */}
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
                         <input
@@ -88,7 +129,6 @@ const EditPost = () => {
                         />
                     </div>
 
-                    {/* Content Rich Text */}
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Content</label>
                         <div className="bg-white rounded-lg border border-gray-300 overflow-hidden focus-within:ring-2 focus-within:ring-primary-500 focus-within:border-transparent transition-all h-[300px] flex flex-col">
@@ -111,7 +151,6 @@ const EditPost = () => {
                         </div>
                     </div>
 
-                    {/* Image URL Input */}
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Image URL (Optional)</label>
                         <div className="flex items-center space-x-2">
@@ -133,20 +172,16 @@ const EditPost = () => {
                         )}
                     </div>
 
-                    {/* Submit Button */}
                     <div className="pt-4 flex justify-end">
                         <button
                             type="submit"
-                            disabled={loading || fetching}
-                            className="flex items-center space-x-2 px-6 py-2 bg-primary-600 text-white font-medium rounded-lg hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
+                            disabled={updateMutation.isPending}
+                            className="flex items-center gap-2 px-6 py-2 bg-primary-600 text-white font-medium rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 shadow-md hover:shadow-lg"
                         >
-                            {loading ? (
-                                'Saving Changes...'
+                            {updateMutation.isPending ? (
+                                <><Loader2 size={18} className="animate-spin" /><span>Saving...</span></>
                             ) : (
-                                <>
-                                    <Send size={18} />
-                                    <span>Save Changes</span>
-                                </>
+                                <><Send size={18} /><span>Save Changes</span></>
                             )}
                         </button>
                     </div>

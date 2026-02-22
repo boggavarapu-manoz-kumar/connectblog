@@ -60,13 +60,39 @@ const CreatePost = () => {
 
     const createPostMutation = useMutation({
         mutationFn: async (postData) => {
-            return api.post('/posts', postData);
+            const { data } = await api.post('/posts', postData);
+            return data; // returns full post with populated author
         },
-        onSuccess: () => {
+        onSuccess: (newPost) => {
+            const authorId = user?._id || user?.id;
+
+            // 1. Inject new post at top of feed cache (instant appear)
+            queryClient.setQueriesData({ queryKey: ['posts-feed'] }, old => {
+                if (!old?.pages) return old;
+                return {
+                    ...old,
+                    pages: [
+                        {
+                            ...old.pages[0],
+                            posts: [newPost, ...(old.pages[0]?.posts || [])]
+                        },
+                        ...old.pages.slice(1)
+                    ]
+                };
+            });
+
+            // 2. Inject into profile posts cache
+            queryClient.setQueriesData({ queryKey: ['profile-posts', authorId] }, old => {
+                if (!old) return { posts: [newPost] };
+                return { ...old, posts: [newPost, ...(old.posts || [])] };
+            });
+
+            // 3. Invalidate in background for accuracy
             queryClient.invalidateQueries({ queryKey: ['posts-feed'] });
-            queryClient.invalidateQueries({ queryKey: ['profile', (user?._id || user?.id)] });
-            queryClient.invalidateQueries({ queryKey: ['profile-posts', (user?._id || user?.id)] });
-            toast.success('Post created successfully!');
+            queryClient.invalidateQueries({ queryKey: ['profile', authorId] });
+            queryClient.invalidateQueries({ queryKey: ['profile-posts', authorId] });
+
+            toast.success('Post published!');
             navigate('/');
         },
         onError: (error) => {

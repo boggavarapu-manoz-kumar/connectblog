@@ -2,13 +2,14 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const { protect } = require('../middleware/auth.middleware');
+const sharp = require('sharp'); // Added for high-speed compression
 
 // We use memoryStorage so the file is NEVER saved to the local disk
 const storage = multer.memoryStorage();
 
 const upload = multer({
     storage: storage,
-    limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit for general 3rd-party uploads
+    limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit for general uploads
 });
 
 router.post('/', protect, upload.single('image'), async (req, res) => {
@@ -17,13 +18,23 @@ router.post('/', protect, upload.single('image'), async (req, res) => {
             return res.status(400).json({ message: 'No image provided' });
         }
 
-        // Dynamically build a form payload directly from the memory buffer
+        // --- BLAZING FAST OPTIMIZATION PIPELINE ---
+        // Drastically reduces buffer size before making the external HTTP call to Catbox
+        // A 5MB photo compresses to ~100-200kb instantly.
+        const optimizedBuffer = await sharp(req.file.buffer)
+            .resize({ width: 1080, withoutEnlargement: true }) // Typical highest mobile width need
+            .webp({ quality: 80 }) // Next-Gen format, superior to JPEG
+            .toBuffer();
+
+        // Dynamically build a form payload directly from the compressed memory buffer
         const formData = new FormData();
         formData.append('reqtype', 'fileupload');
 
-        // Convert Buffer to Blob for exact multipart/form encoding compatibility
-        const blob = new Blob([req.file.buffer], { type: req.file.mimetype });
-        formData.append('fileToUpload', blob, req.file.originalname);
+        // Convert optimized Buffer to Blob
+        const blob = new Blob([optimizedBuffer], { type: 'image/webp' });
+
+        // Pass the highly-optimized image securely to Catbox
+        formData.append('fileToUpload', blob, 'optimized_image.webp');
 
         // Upload to catbox.moe (100% Free, Permanent, No Account Needed, No Local Storage)
         const response = await fetch('https://catbox.moe/user/api.php', {

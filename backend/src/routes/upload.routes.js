@@ -25,35 +25,43 @@ router.post('/', protect, upload.single('image'), async (req, res) => {
             return res.status(400).json({ message: 'No image provided' });
         }
 
-        // Extremely fast Binary streaming directly from memory to API
-        // Bypass all slow Base64 stringification by using native FormData & Blobs
+        // 🚀 High-Performance Cloud Proxy Algorithm
+        // Native streaming from memory buffer to freeimage.host API
         const formData = new FormData();
-        formData.append('key', '6d207e02198a847aa98d0a2a901485a5'); // Public free API key
+        formData.append('key', '6d207e02198a847aa98d0a2a901485a5');
         formData.append('action', 'upload');
         formData.append('format', 'json');
 
-        // Wrap the raw memory buffer in a Blob for native transmission
-        const blob = new Blob([req.file.buffer], { type: req.file.mimetype });
-        formData.append('source', blob, req.file.originalname);
+        // Prepare the file for the request
+        const fileContent = new Blob([req.file.buffer], { type: req.file.mimetype });
+        formData.append('source', fileContent, req.file.originalname);
 
-        // Upload to the blazing fast reliable image hosting server
         const response = await fetch('https://freeimage.host/api/1/upload', {
             method: 'POST',
-            body: formData
+            body: formData,
+            // Keep connection alive for speed
+            headers: {
+                'Connection': 'keep-alive'
+            }
         });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('3rd Party API Error:', errorText);
+            return res.status(502).json({ message: 'Upstream image service failed' });
+        }
 
         const data = await response.json();
 
-        if (data.status_code !== 200) {
-            throw new Error(data?.error?.message || "Failed to upload to 3rd-party node");
+        if (data && data.image && data.image.url) {
+            return res.status(200).json({ url: data.image.url });
+        } else {
+            throw new Error('Invalid response format from image host');
         }
 
-        // Return the successfully hosted remote third-party URL link
-        return res.status(200).json({ url: data.image.url });
-
     } catch (error) {
-        console.error('Core upload error:', error);
-        res.status(500).json({ message: 'Failed to upload image' });
+        console.error('Critical Upload Lag-Fix Failure:', error);
+        res.status(500).json({ message: 'Image processing failed on the server clusters.' });
     }
 });
 

@@ -1,30 +1,24 @@
-import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import api from '../services/api';
 import { Loader2, Flame, Hash } from 'lucide-react';
+import { useEffect } from 'react';
 
 const Explore = () => {
-    const [posts, setPosts] = useState([]);
-    const [loading, setLoading] = useState(true);
-
     useEffect(() => {
         window.scrollTo(0, 0);
-        const fetchTrending = async () => {
-            try {
-                // Utilizing the custom trending engagement score algorithm built into the backend!
-                const { data } = await api.get('/posts?sort=trending&limit=24');
-                setPosts(data);
-            } catch (err) {
-                console.error(err);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchTrending();
     }, []);
 
-    if (loading) {
+    const { data: posts = [], isLoading } = useQuery({
+        queryKey: ['explore-trending'],
+        queryFn: async () => {
+            const { data } = await api.get('/posts?sort=trending&limit=24');
+            return data;
+        },
+        staleTime: 1000 * 60 * 5, // Cache trending posts for 5 mins
+    });
+
+    if (isLoading) {
         return (
             <div className="min-h-screen flex flex-col items-center justify-center">
                 <Loader2 className="w-12 h-12 text-primary-600 animate-spin mb-4" />

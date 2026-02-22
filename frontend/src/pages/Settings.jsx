@@ -36,9 +36,11 @@ const Settings = () => {
     const [accountData, setAccountData] = useState({
         username: user?.username || '',
         email: user?.email || '',
-        password: '',
-        newPassword: ''
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: ''
     });
+    const [showPasswords, setShowPasswords] = useState(false);
 
     const [socialLinks, setSocialLinks] = useState(user?.socialLinks || {
         instagram: '',
@@ -68,10 +70,30 @@ const Settings = () => {
 
     const handleAccountUpdate = async (e) => {
         e.preventDefault();
+
+        // Validation for password change
+        if (accountData.newPassword) {
+            if (!accountData.currentPassword) {
+                return toast.error('Current password is required to change password');
+            }
+            if (accountData.newPassword.length < 6) {
+                return toast.error('New password must be at least 6 characters');
+            }
+            if (accountData.newPassword !== accountData.confirmPassword) {
+                return toast.error('New passwords do not match');
+            }
+        }
+
         setLoading(true);
         try {
             const { data } = await api.put('/users/profile', accountData);
             updateUser(data);
+            setAccountData({
+                ...accountData,
+                currentPassword: '',
+                newPassword: '',
+                confirmPassword: ''
+            });
             toast.success('Account updated successfully!');
         } catch (error) {
             toast.error(error.response?.data?.message || 'Update failed');
@@ -187,18 +209,48 @@ const Settings = () => {
                                         </div>
 
                                         <div className="pt-6 border-t border-gray-100 mt-8">
-                                            <div className="flex items-center gap-2 mb-6">
-                                                <Lock size={18} className="text-primary-600" />
-                                                <h3 className="font-bold text-gray-900 italic">Change Password</h3>
+                                            <div className="flex items-center justify-between mb-6">
+                                                <div className="flex items-center gap-2">
+                                                    <Lock size={18} className="text-primary-600" />
+                                                    <h3 className="font-bold text-gray-900 italic">Change Password</h3>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowPasswords(!showPasswords)}
+                                                    className="text-xs font-black text-primary-600 uppercase tracking-widest hover:text-primary-700 transition-colors flex items-center gap-1.5"
+                                                >
+                                                    {showPasswords ? <EyeOff size={14} /> : <Eye size={14} />}
+                                                    {showPasswords ? 'Hide' : 'Show'}
+                                                </button>
                                             </div>
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                                                <div className="space-y-2">
+                                                    <label className="text-sm font-bold text-gray-700 ml-1">Current Password</label>
+                                                    <input
+                                                        type={showPasswords ? "text" : "password"}
+                                                        placeholder="••••••••"
+                                                        value={accountData.currentPassword}
+                                                        onChange={(e) => setAccountData({ ...accountData, currentPassword: e.target.value })}
+                                                        className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-primary-500 transition-all font-medium text-gray-900"
+                                                    />
+                                                </div>
                                                 <div className="space-y-2">
                                                     <label className="text-sm font-bold text-gray-700 ml-1">New Password</label>
                                                     <input
-                                                        type="password"
-                                                        placeholder="Leave blank to keep current"
+                                                        type={showPasswords ? "text" : "password"}
+                                                        placeholder="Min. 6 chars"
                                                         value={accountData.newPassword}
                                                         onChange={(e) => setAccountData({ ...accountData, newPassword: e.target.value })}
+                                                        className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-primary-500 transition-all font-medium text-gray-900"
+                                                    />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <label className="text-sm font-bold text-gray-700 ml-1">Confirm New</label>
+                                                    <input
+                                                        type={showPasswords ? "text" : "password"}
+                                                        placeholder="Re-type new"
+                                                        value={accountData.confirmPassword}
+                                                        onChange={(e) => setAccountData({ ...accountData, confirmPassword: e.target.value })}
                                                         className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-primary-500 transition-all font-medium text-gray-900"
                                                     />
                                                 </div>

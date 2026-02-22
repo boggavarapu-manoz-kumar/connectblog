@@ -14,6 +14,18 @@ import Explore from './pages/Explore';
 import Notifications from './pages/Notifications';
 import { Toaster } from 'react-hot-toast';
 import ScrollToTop from './components/layout/ScrollToTop';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
+const queryClient = new QueryClient({
+    defaultOptions: {
+        queries: {
+            staleTime: 1000 * 60 * 5, // 5 minutes cache before it's "stale"
+            gcTime: 1000 * 60 * 60, // Keep in garbage collection for 1 hour
+            refetchOnWindowFocus: false, // Don't annoy user with reloads on tab switch
+            retry: 1, // Retry once on failure
+        },
+    },
+});
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
@@ -28,67 +40,69 @@ const ProtectedRoute = ({ children }) => {
 
 function App() {
     return (
-        <AuthProvider>
-            <SocketProvider>
-                <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-                    <ScrollToTop />
-                    <div className="min-h-screen bg-[#f3f2ef] flex flex-col">
-                        <Navbar />
-                        <main className="flex-1">
-                            <Routes>
-                                <Route path="/" element={<Home />} />
-                                <Route path="/explore" element={<Explore />} />
-                                <Route path="/login" element={<Login />} />
-                                <Route path="/register" element={<Register />} />
-                                <Route
-                                    path="/create-post"
-                                    element={
-                                        <ProtectedRoute>
-                                            <CreatePost />
-                                        </ProtectedRoute>
-                                    }
-                                />
-                                <Route
-                                    path="/edit-post/:id"
-                                    element={
-                                        <ProtectedRoute>
-                                            <EditPost />
-                                        </ProtectedRoute>
-                                    }
-                                />
-                                <Route
-                                    path="/profile"
-                                    element={
-                                        <ProtectedRoute>
-                                            <Profile />
-                                        </ProtectedRoute>
-                                    }
-                                />
-                                <Route
-                                    path="/settings"
-                                    element={
-                                        <ProtectedRoute>
-                                            <Settings />
-                                        </ProtectedRoute>
-                                    }
-                                />
-                                <Route
-                                    path="/notifications"
-                                    element={
-                                        <ProtectedRoute>
-                                            <Notifications />
-                                        </ProtectedRoute>
-                                    }
-                                />
-                                <Route path="/profile/:id" element={<Profile />} />
-                                <Route path="/posts/:id" element={<PostDetail />} />
-                            </Routes>
-                        </main>
-                        <Toaster position="top-center" />
-                    </div>
-                </BrowserRouter>
-            </SocketProvider>
-        </AuthProvider>
+        <QueryClientProvider client={queryClient}>
+            <AuthProvider>
+                <SocketProvider>
+                    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+                        <ScrollToTop />
+                        <div className="min-h-screen bg-[#f3f2ef] flex flex-col">
+                            <Navbar />
+                            <main className="flex-1">
+                                <Routes>
+                                    <Route path="/" element={<Home />} />
+                                    <Route path="/explore" element={<Explore />} />
+                                    <Route path="/login" element={<Login />} />
+                                    <Route path="/register" element={<Register />} />
+                                    <Route
+                                        path="/create-post"
+                                        element={
+                                            <ProtectedRoute>
+                                                <CreatePost />
+                                            </ProtectedRoute>
+                                        }
+                                    />
+                                    <Route
+                                        path="/edit-post/:id"
+                                        element={
+                                            <ProtectedRoute>
+                                                <EditPost />
+                                            </ProtectedRoute>
+                                        }
+                                    />
+                                    <Route
+                                        path="/profile"
+                                        element={
+                                            <ProtectedRoute>
+                                                <Profile />
+                                            </ProtectedRoute>
+                                        }
+                                    />
+                                    <Route
+                                        path="/settings"
+                                        element={
+                                            <ProtectedRoute>
+                                                <Settings />
+                                            </ProtectedRoute>
+                                        }
+                                    />
+                                    <Route
+                                        path="/notifications"
+                                        element={
+                                            <ProtectedRoute>
+                                                <Notifications />
+                                            </ProtectedRoute>
+                                        }
+                                    />
+                                    <Route path="/profile/:id" element={<Profile />} />
+                                    <Route path="/posts/:id" element={<PostDetail />} />
+                                </Routes>
+                            </main>
+                            <Toaster position="top-center" />
+                        </div>
+                    </BrowserRouter>
+                </SocketProvider>
+            </AuthProvider>
+        </QueryClientProvider>
     );
 }
 

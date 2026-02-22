@@ -3,9 +3,11 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
+const compression = require('compression');
 const path = require('path');
 
 const app = express();
+app.use(compression());
 
 // Middleware
 app.use(express.json({ limit: '50mb' }));

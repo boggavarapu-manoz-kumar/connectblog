@@ -70,7 +70,7 @@ const getUserProfile = async (req, res) => {
 // @access  Private
 const updateUserProfile = async (req, res) => {
     try {
-        const user = await User.findById(req.user.id);
+        const user = await User.findById(req.user.id).select('+password');
 
         if (user) {
             if (req.body.username && req.body.username !== user.username) {
@@ -89,8 +89,15 @@ const updateUserProfile = async (req, res) => {
             user.profilePic = req.body.profilePic || user.profilePic;
             user.coverImage = req.body.coverImage !== undefined ? req.body.coverImage : user.coverImage;
 
-            if (req.body.password) {
-                user.password = req.body.password;
+            if (req.body.newPassword) {
+                if (!req.body.currentPassword) {
+                    return res.status(400).json({ message: 'Current password is required to set a new password' });
+                }
+                const isMatch = await user.matchPassword(req.body.currentPassword);
+                if (!isMatch) {
+                    return res.status(400).json({ message: 'Incorrect current password' });
+                }
+                user.password = req.body.newPassword;
             }
 
             if (req.body.socialLinks) {

@@ -260,6 +260,11 @@ const PostCard = ({ post, onPostUpdate }) => {
                             alt={post.title}
                             className="w-full max-h-[500px] object-cover sm:object-contain"
                             loading="lazy"
+                            onError={(e) => {
+                                e.target.onerror = null;
+                                e.target.src = 'https://via.placeholder.com/1200x800.png?text=Content+Is+Available+But+Image+Failed+To+Load';
+                                e.target.className = "w-full h-32 object-cover opacity-50 grayscale";
+                            }}
                         />
                         <div className="absolute inset-0 bg-black/opacity-0 group-hover:bg-black/5 transition-colors duration-200"></div>
                     </div>

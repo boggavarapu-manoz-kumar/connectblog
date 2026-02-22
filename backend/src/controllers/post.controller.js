@@ -152,20 +152,27 @@ const getPosts = async (req, res) => {
                     select: 'username profilePic'
                 }
             });
-        } else {
-            // Standard deterministic search/author queries
-            posts = await Post.find(matchStage)
+        } else if (search) {
+            // High-Performance Text Search using MongoDB Text Index
+            posts = await Post.find({
+                $text: { $search: search },
+                isArchived: archived === 'true'
+            })
+                .select('title content image hashtags author createdAt likes comments')
                 .populate('author', 'username profilePic')
-                .populate({
-                    path: 'comments',
-                    populate: {
-                        path: 'user',
-                        select: 'username profilePic'
-                    }
-                })
+                .sort({ score: { $meta: 'textScore' } })
+                .skip(skip)
+                .limit(limit)
+                .lean();
+        } else {
+            // Standard deterministic queries with optimization
+            posts = await Post.find(matchStage)
+                .select('title content image hashtags author createdAt likes comments')
+                .populate('author', 'username profilePic')
                 .sort({ createdAt: -1 })
                 .skip(skip)
-                .limit(limit);
+                .limit(limit)
+                .lean();
         }
 
         res.status(200).json(posts);

@@ -40,4 +40,10 @@ const postSchema = new mongoose.Schema({
     timestamps: true
 });
 
+// Performance Indexes
+postSchema.index({ title: 'text', content: 'text', hashtags: 'text' });
+postSchema.index({ author: 1 });
+postSchema.index({ isArchived: 1 });
+postSchema.index({ createdAt: -1 });
+
 module.exports = mongoose.model('Post', postSchema);

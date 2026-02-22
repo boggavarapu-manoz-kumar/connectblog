@@ -54,31 +54,98 @@ const PostDetail = () => {
         staleTime: 1000 * 60 * 1, // 1 min cache
     });
 
-    // Like Mutation
+    // Like mutation
     const likeMutation = useMutation({
         mutationFn: async (isCurrentlyLiked) => {
             const endpoint = isCurrentlyLiked ? `/posts/${id}/unlike` : `/posts/${id}/like`;
             return api.put(endpoint);
         },
         onMutate: async (isCurrentlyLiked) => {
-            await queryClient.cancelQueries({ queryKey: ['post', id] });
-            const previousPost = queryClient.getQueryData(['post', id]);
+            const userId = user?._id || user?.id;
+            if (!userId) return;
 
-            queryClient.setQueryData(['post', id], old => {
+            // 1. Cancel all potentially conflicting queries
+            await Promise.all([
+                queryClient.cancelQueries({ queryKey: ['post', id] }),
+                queryClient.cancelQueries({ queryKey: ['posts-feed'] }),
+                queryClient.cancelQueries({ queryKey: ['profile-posts'] }),
+                queryClient.cancelQueries({ queryKey: ['profile-private'] })
+            ]);
+
+            // 2. Comprehensive Snapshots for rollback
+            const snapshots = {
+                singlePost: queryClient.getQueryData(['post', id]),
+                feeds: queryClient.getQueriesData({ queryKey: ['posts-feed'] }),
+                profilePosts: queryClient.getQueriesData({ queryKey: ['profile-posts'] }),
+                profilePrivate: queryClient.getQueriesData({ queryKey: ['profile-private'] })
+            };
+
+            const updatePostLikes = (p) => {
+                if (!p || (p._id !== id && id !== p.id)) return p;
                 const newLikes = isCurrentlyLiked
-                    ? old.likes.filter(uid => uid !== user._id)
-                    : [...old.likes, user._id];
-                return { ...old, likes: newLikes };
+                    ? (p.likes || []).filter(uid => uid.toString() !== userId.toString())
+                    : [...(p.likes || []), userId];
+                return { ...p, likes: newLikes };
+            };
+
+            // Optimistic Update: SINGLE POST
+            queryClient.setQueryData(['post', id], old => {
+                if (!old) return old;
+                return updatePostLikes(old);
             });
 
-            return { previousPost };
+            // Optimistic Update: FEED
+            queryClient.setQueriesData({ queryKey: ['posts-feed'] }, old => {
+                if (!old || !old.pages) return old;
+                return {
+                    ...old,
+                    pages: old.pages.map(page => ({
+                        ...page,
+                        posts: page.posts?.map(updatePostLikes) || []
+                    }))
+                };
+            });
+
+            // Optimistic Update: PROFILE POSTS
+            queryClient.setQueriesData({ queryKey: ['profile-posts'] }, old => {
+                if (!old || !old.posts) return old;
+                return { ...old, posts: old.posts.map(updatePostLikes) };
+            });
+
+            // Optimistic Update: PRIVATE DATA
+            queryClient.setQueriesData({ queryKey: ['profile-private'] }, old => {
+                if (!old) return old;
+                return {
+                    ...old,
+                    archived: old.archived?.map(updatePostLikes) || [],
+                    saved: old.saved?.map(updatePostLikes) || []
+                };
+            });
+
+            return { snapshots };
         },
         onError: (err, variables, context) => {
-            queryClient.setQueryData(['post', id], context.previousPost);
-            toast.error("Action failed");
+            // Precise Rollback using snapshots
+            if (context?.snapshots?.singlePost) {
+                queryClient.setQueryData(['post', id], context.snapshots.singlePost);
+            }
+            if (context?.snapshots?.feeds) {
+                context.snapshots.feeds.forEach(([queryKey, data]) => {
+                    queryClient.setQueryData(queryKey, data);
+                });
+            }
+            if (context?.snapshots?.profilePosts) {
+                context.snapshots.profilePosts.forEach(([queryKey, data]) => {
+                    queryClient.setQueryData(queryKey, data);
+                });
+            }
+            toast.error("Sync failed");
         },
         onSettled: () => {
             queryClient.invalidateQueries({ queryKey: ['post', id] });
+            queryClient.invalidateQueries({ queryKey: ['posts-feed'] });
+            queryClient.invalidateQueries({ queryKey: ['profile-posts'] });
+            queryClient.invalidateQueries({ queryKey: ['profile-private'] });
         }
     });
 
@@ -89,9 +156,18 @@ const PostDetail = () => {
             return data;
         },
         onSuccess: (newComment) => {
-            queryClient.setQueryData(['post-comments', id], old => [newComment, ...old]);
-            setCommentText('');
+            queryClient.setQueryData(['post-comments', id], old => {
+                const oldComments = Array.isArray(old) ? old : [];
+                return [newComment, ...oldComments];
+            });
+            setCommentText(''); // Instant UI feedback
             toast.success('Comment added!');
+
+            // Sync the comment count universally
+            queryClient.invalidateQueries({ queryKey: ['post', id] });
+            queryClient.invalidateQueries({ queryKey: ['posts-feed'] });
+            queryClient.invalidateQueries({ queryKey: ['profile-posts'] });
+            queryClient.invalidateQueries({ queryKey: ['profile-private'] });
         },
         onError: () => toast.error('Failed to add comment'),
     });

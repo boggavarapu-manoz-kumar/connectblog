@@ -21,51 +21,102 @@ const PostCard = ({ post, onPostUpdate }) => {
     const likesCount = post.likes?.length || 0;
     const isBookmarked = user?.bookmarks?.includes(post._id);
 
-    // 🚀 High-Performance Mutation: LIKE
+    // Like mutation
     const likeMutation = useMutation({
         mutationFn: async ({ liked }) => {
             const endpoint = liked ? `/posts/${post._id}/unlike` : `/posts/${post._id}/like`;
             return api.put(endpoint);
         },
         onMutate: async ({ liked }) => {
-            await queryClient.cancelQueries({ queryKey: ['posts-feed'] });
-            await queryClient.cancelQueries({ queryKey: ['post', post._id] });
+            const userId = user?._id || user?.id;
+            if (!userId) return;
 
-            const previousFeed = queryClient.getQueryData(['posts-feed']);
+            // 1. Cancel all potentially conflicting queries
+            await Promise.all([
+                queryClient.cancelQueries({ queryKey: ['posts-feed'] }),
+                queryClient.cancelQueries({ queryKey: ['post', post._id] }),
+                queryClient.cancelQueries({ queryKey: ['profile-posts'] }),
+                queryClient.cancelQueries({ queryKey: ['profile-private'] })
+            ]);
 
-            // Optimistically update all instances of this post in the feed cache
+            // 2. Comprehensive Snapshots for rollback
+            const snapshots = {
+                feeds: queryClient.getQueriesData({ queryKey: ['posts-feed'] }),
+                singlePost: queryClient.getQueryData(['post', post._id]),
+                profilePosts: queryClient.getQueriesData({ queryKey: ['profile-posts'] }),
+                profilePrivate: queryClient.getQueriesData({ queryKey: ['profile-private'] })
+            };
+
+            const updatePostLikes = (p) => {
+                if (p._id !== post._id && p.id !== post._id) return p;
+                const newLikes = liked
+                    ? (p.likes || []).filter(id => id.toString() !== userId.toString())
+                    : [...(p.likes || []), userId];
+                return { ...p, likes: newLikes };
+            };
+
+            // 3. Optimistic Update: FEED(S) - Universal Partial Match
             queryClient.setQueriesData({ queryKey: ['posts-feed'] }, old => {
-                if (!old) return old;
+                if (!old || !old.pages) return old;
                 return {
                     ...old,
                     pages: old.pages.map(page => ({
                         ...page,
-                        posts: page.posts?.map(p => {
-                            if (p._id === post._id) {
-                                const newLikes = liked
-                                    ? p.likes.filter(id => id !== user?._id)
-                                    : [...(p.likes || []), user?._id];
-                                return { ...p, likes: newLikes };
-                            }
-                            return p;
-                        }) || []
+                        posts: page.posts?.map(updatePostLikes) || []
                     }))
                 };
             });
 
-            return { previousFeed };
+            // 4. Optimistic Update: SINGLE POST
+            queryClient.setQueryData(['post', post._id], old => {
+                if (!old) return old;
+                return updatePostLikes(old);
+            });
+
+            // 5. Optimistic Update: PROFILE POSTS (Global)
+            queryClient.setQueriesData({ queryKey: ['profile-posts'] }, old => {
+                if (!old || !old.posts) return old;
+                return { ...old, posts: old.posts.map(updatePostLikes) };
+            });
+
+            // 6. Optimistic Update: PRIVATE DATA
+            queryClient.setQueriesData({ queryKey: ['profile-private'] }, old => {
+                if (!old) return old;
+                return {
+                    ...old,
+                    archived: old.archived?.map(updatePostLikes) || [],
+                    saved: old.saved?.map(updatePostLikes) || []
+                };
+            });
+
+            return { snapshots };
         },
         onError: (err, variables, context) => {
-            queryClient.setQueryData(['posts-feed'], context.previousFeed);
-            toast.error("Action failed");
+            // Precise Rollback using snapshots
+            if (context?.snapshots?.feeds) {
+                context.snapshots.feeds.forEach(([queryKey, data]) => {
+                    queryClient.setQueryData(queryKey, data);
+                });
+            }
+            if (context?.snapshots?.profilePosts) {
+                context.snapshots.profilePosts.forEach(([queryKey, data]) => {
+                    queryClient.setQueryData(queryKey, data);
+                });
+            }
+            if (context?.snapshots?.singlePost) {
+                queryClient.setQueryData(['post', post._id], context.snapshots.singlePost);
+            }
+            toast.error("Sync failed");
         },
         onSettled: () => {
             queryClient.invalidateQueries({ queryKey: ['posts-feed'] });
             queryClient.invalidateQueries({ queryKey: ['post', post._id] });
+            queryClient.invalidateQueries({ queryKey: ['profile-posts'] });
+            queryClient.invalidateQueries({ queryKey: ['profile-private'] });
         }
     });
 
-    // 🚀 High-Performance Mutation: BOOKMARK
+    // Bookmark mutation
     const bookmarkMutation = useMutation({
         mutationFn: async () => {
             return api.put(`/users/bookmarks/${post._id}`);
@@ -89,22 +140,145 @@ const PostCard = ({ post, onPostUpdate }) => {
         }
     });
 
+    // Comment mutation
+    const commentMutation = useMutation({
+        mutationFn: async (text) => {
+            const { data } = await api.post(`/posts/${post._id}/comments`, { text });
+            return data;
+        },
+        onMutate: async (text) => {
+            const userId = user?._id || user?.id;
+            if (!userId) return;
+
+            // 1. Cancel queries
+            await Promise.all([
+                queryClient.cancelQueries({ queryKey: ['posts-feed'] }),
+                queryClient.cancelQueries({ queryKey: ['profile-posts'] })
+            ]);
+
+            // 2. Snapshot
+            const snapshots = {
+                feeds: queryClient.getQueriesData({ queryKey: ['posts-feed'] }),
+                profilePosts: queryClient.getQueriesData({ queryKey: ['profile-posts'] })
+            };
+
+            // Fake user object for immediate UI render
+            const tempComment = {
+                _id: Date.now().toString(),
+                text: text,
+                user: {
+                    _id: user._id,
+                    username: user.username,
+                    profilePic: user.profilePic
+                },
+                createdAt: new Date().toISOString()
+            };
+
+            const updatePostComments = (p) => {
+                if (p._id !== post._id && p.id !== post._id) return p;
+                return { ...p, comments: [...(p.comments || []), tempComment] };
+            };
+
+            // 3. Optimistic Update: FEED
+            queryClient.setQueriesData({ queryKey: ['posts-feed'] }, old => {
+                if (!old || !old.pages) return old;
+                return {
+                    ...old,
+                    pages: old.pages.map(page => ({
+                        ...page,
+                        posts: page.posts?.map(updatePostComments) || []
+                    }))
+                };
+            });
+
+            // 4. Optimistic Update: PROFILE
+            queryClient.setQueriesData({ queryKey: ['profile-posts'] }, old => {
+                if (!old || !old.posts) return old;
+                return { ...old, posts: old.posts.map(updatePostComments) };
+            });
+
+            return { snapshots };
+        },
+        onError: (err, variables, context) => {
+            // Precise Rollback
+            if (context?.snapshots?.feeds) {
+                context.snapshots.feeds.forEach(([queryKey, data]) => {
+                    queryClient.setQueryData(queryKey, data);
+                });
+            }
+            if (context?.snapshots?.profilePosts) {
+                context.snapshots.profilePosts.forEach(([queryKey, data]) => {
+                    queryClient.setQueryData(queryKey, data);
+                });
+            }
+            toast.error('Failed to add comment');
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['posts-feed'] });
+            queryClient.invalidateQueries({ queryKey: ['profile-posts'] });
+        }
+    });
+
     const handleCommentSubmit = async (e) => {
         e.preventDefault();
         if (!commentText.trim() || !user) return;
 
-        try {
-            await api.post(`/posts/${post._id}/comments`, { text: commentText });
-            setCommentText('');
-            toast.success('Comment added!');
-            if (onPostUpdate) onPostUpdate();
-            queryClient.invalidateQueries({ queryKey: ['post-comments', post._id] });
-        } catch (error) {
-            toast.error('Failed to add comment');
-        }
+        commentMutation.mutate(commentText);
+        setCommentText(''); // Clear instantly for zero-latency UX
     };
 
-    // 🚀 High-Performance Mutation: DELETE (Optimistic & Instant)
+    // Delete comment mutation
+    const deleteCommentMutation = useMutation({
+        mutationFn: async (commentId) => {
+            await api.delete(`/posts/${post._id}/comments/${commentId}`);
+            return commentId;
+        },
+        onMutate: async (commentId) => {
+            await Promise.all([
+                queryClient.cancelQueries({ queryKey: ['posts-feed'] }),
+                queryClient.cancelQueries({ queryKey: ['profile-posts'] })
+            ]);
+
+            const snapshots = {
+                feeds: queryClient.getQueriesData({ queryKey: ['posts-feed'] }),
+                profilePosts: queryClient.getQueriesData({ queryKey: ['profile-posts'] })
+            };
+
+            const removeComment = (p) => {
+                if (p._id !== post._id && p.id !== post._id) return p;
+                return { ...p, comments: (p.comments || []).filter(c => (c._id || c) !== commentId) };
+            };
+
+            queryClient.setQueriesData({ queryKey: ['posts-feed'] }, old => {
+                if (!old || !old.pages) return old;
+                return {
+                    ...old,
+                    pages: old.pages.map(page => ({
+                        ...page,
+                        posts: page.posts?.map(removeComment) || []
+                    }))
+                };
+            });
+
+            queryClient.setQueriesData({ queryKey: ['profile-posts'] }, old => {
+                if (!old || !old.posts) return old;
+                return { ...old, posts: old.posts.map(removeComment) };
+            });
+
+            return { snapshots };
+        },
+        onError: (err, variables, context) => {
+            if (context?.snapshots?.feeds) context.snapshots.feeds.forEach(([key, data]) => queryClient.setQueryData(key, data));
+            if (context?.snapshots?.profilePosts) context.snapshots.profilePosts.forEach(([key, data]) => queryClient.setQueryData(key, data));
+            toast.error('Failed to delete comment');
+        },
+        onSettled: () => {
+            queryClient.invalidateQueries({ queryKey: ['posts-feed'] });
+            queryClient.invalidateQueries({ queryKey: ['profile-posts'] });
+        }
+    });
+
+    // Delete mutation
     const deleteMutation = useMutation({
         mutationFn: async () => {
             return api.delete(`/posts/${post._id}`);
@@ -175,7 +349,7 @@ const PostCard = ({ post, onPostUpdate }) => {
         }
     });
 
-    // 🚀 High-Performance Mutation: ARCHIVE
+    // Archive mutation
     const archiveMutation = useMutation({
         mutationFn: async () => {
             return api.put(`/posts/${post._id}`, { isArchived: !post.isArchived });
@@ -359,9 +533,24 @@ const PostCard = ({ post, onPostUpdate }) => {
                                             <Link to={`/profile/${comment.user?._id || comment.user}`} className="text-sm font-bold text-gray-900 hover:text-primary-600">
                                                 {comment.user?.username}
                                             </Link>
-                                            <span className="text-[10px] text-gray-400 font-medium lowercase">
-                                                {comment.createdAt ? formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true }) : 'just now'}
-                                            </span>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-[10px] text-gray-400 font-medium lowercase">
+                                                    {comment.createdAt ? formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true }) : 'just now'}
+                                                </span>
+                                                {(user?._id === (comment.user?._id || comment.user) || isAuthor) && (
+                                                    <button
+                                                        onClick={() => {
+                                                            if (window.confirm("Delete this comment?")) {
+                                                                deleteCommentMutation.mutate(comment._id);
+                                                            }
+                                                        }}
+                                                        className="text-gray-400 hover:text-red-500 transition-colors p-1"
+                                                        title="Delete comment"
+                                                    >
+                                                        <Trash2 size={12} />
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
                                         <p className="text-sm text-gray-700 leading-relaxed font-sans">
                                             {comment.text}

@@ -18,18 +18,13 @@ import { QueryClient } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
 
-// 🚀 Professional Algorithm 1: State Persistent Cache
-// This saves every API response into localStorage so the site works OFFLINE
-// and loads INSTANTLY from the device memory on revisit.
 const queryClient = new QueryClient({
     defaultOptions: {
         queries: {
-            staleTime: 1000 * 60 * 10, // 10 minutes (Aggressive Caching)
-            gcTime: 1000 * 60 * 60 * 24, // 24 Hours in memory (Reduces Cloud Bill)
+            staleTime: 1000 * 60 * 10, // 10 minutes cache
+            gcTime: 1000 * 60 * 60 * 24, // 24 Hours garbage collection
             refetchOnWindowFocus: false,
             retry: 1,
-            // 🚀 Algorithm 2: Background Sync
-            // It shows old data first (instant) then updates silently
             refetchOnMount: 'always',
         },
     },

@@ -7,6 +7,7 @@ import PostCard from '../components/post/PostCard';
 import { Settings, Loader2, Link as LinkIcon, Bookmark, Grid, Archive, AlertCircle, RefreshCw, Instagram, Facebook, Linkedin, Globe, Code } from 'lucide-react';
 import toast from 'react-hot-toast';
 import EditProfileModal from '../components/profile/EditProfileModal';
+import UserListModal from '../components/profile/UserListModal';
 
 const Profile = () => {
     const { id: urlUserId } = useParams();
@@ -17,6 +18,12 @@ const Profile = () => {
 
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [activeTab, setActiveTab] = useState('posts');
+
+    // List Modal State (Followers/Following)
+    const [isListModalOpen, setIsListModalOpen] = useState(false);
+    const [modalTitle, setModalTitle] = useState('');
+    const [modalUsers, setModalUsers] = useState([]);
+    const [isListLoading, setIsListLoading] = useState(false);
 
     const targetUserId = useMemo(() => {
         return urlUserId || currentUser?._id || currentUser?.id;
@@ -31,7 +38,7 @@ const Profile = () => {
             return data;
         },
         enabled: !authLoading && !!targetUserId,
-        staleTime: 1000 * 60 * 10, // 10 minutes cache (Best Ever)
+        staleTime: 1000 * 60 * 10, // 10 minutes cache
     });
 
     // Query 2: User's Public Posts
@@ -42,7 +49,7 @@ const Profile = () => {
             return data;
         },
         enabled: !!profileUser?._id,
-        staleTime: 1000 * 60 * 10, // 10 minutes cache (Best Ever)
+        staleTime: 1000 * 60 * 10, // 10 minutes cache
     });
 
     const posts = postsData?.posts || [];
@@ -68,38 +75,87 @@ const Profile = () => {
 
     const privateData = privateDataRaw || { archived: [], saved: [] };
 
-    // Follow Mutation for Instant UI Updates (Optimistic)
+    // Follow mutation
     const followMutation = useMutation({
         mutationFn: async ({ isFollowing }) => {
             const endpoint = isFollowing ? `/users/${targetUserId}/unfollow` : `/users/${targetUserId}/follow`;
             return api.put(endpoint);
         },
         onMutate: async ({ isFollowing }) => {
-            // Cancel any outgoing refetches (so they don't overwrite our optimistic update)
-            await queryClient.cancelQueries({ queryKey: ['profile', targetUserId] });
+            const myId = currentUser?._id || currentUser?.id;
+            if (!myId) return;
 
-            // Snapshot the previous value
-            const previousProfile = queryClient.getQueryData(['profile', targetUserId]);
+            // 1. Cancel outgoing refetches
+            await Promise.all([
+                queryClient.cancelQueries({ queryKey: ['profile', targetUserId] }),
+                queryClient.cancelQueries({ queryKey: ['profile', myId] }),
+                queryClient.cancelQueries({ queryKey: ['posts-feed'] })
+            ]);
 
-            // Optimistically update to the new value
+            // 2. Snapshots
+            const snapshots = {
+                targetProfile: queryClient.getQueryData(['profile', targetUserId]),
+                myProfile: queryClient.getQueryData(['profile', myId])
+            };
+
+            // 3. Update Target User's Followers
             queryClient.setQueryData(['profile', targetUserId], old => {
+                if (!old) return old;
                 const newFollowers = isFollowing
-                    ? old.followers.filter(f => f !== (currentUser._id || currentUser.id))
-                    : [...(old.followers || []), (currentUser._id || currentUser.id)];
+                    ? (old.followers || []).filter(f => f.toString() !== myId.toString())
+                    : [...(old.followers || []), myId];
                 return { ...old, followers: newFollowers };
             });
 
-            return { previousProfile };
+            // 4. Update My Following
+            if (myId) {
+                queryClient.setQueryData(['profile', myId], old => {
+                    if (!old) return old;
+                    const newFollowing = isFollowing
+                        ? (old.following || []).filter(f => f.toString() !== targetUserId.toString())
+                        : [...(old.following || []), targetUserId];
+                    return { ...old, following: newFollowing };
+                });
+            }
+
+            return { snapshots };
         },
         onError: (err, variables, context) => {
-            queryClient.setQueryData(['profile', targetUserId], context.previousProfile);
-            toast.error("Action failed");
+            const myId = currentUser?._id || currentUser?.id;
+            if (context?.snapshots?.targetProfile) {
+                queryClient.setQueryData(['profile', targetUserId], context.snapshots.targetProfile);
+            }
+            if (myId && context?.snapshots?.myProfile) {
+                queryClient.setQueryData(['profile', myId], context.snapshots.myProfile);
+            }
+            toast.error("Sync failed");
+        },
+        onSuccess: (data, { isFollowing }) => {
+            toast.success(isFollowing ? "Unfollowed" : "Following");
         },
         onSettled: () => {
+            const myId = currentUser?._id || currentUser?.id;
             queryClient.invalidateQueries({ queryKey: ['profile', targetUserId] });
-            toast.success(profileUser?.followers?.includes(currentUser?._id || currentUser?.id) ? "Unfollowed" : "Following");
+            if (myId) queryClient.invalidateQueries({ queryKey: ['profile', myId] });
+            queryClient.invalidateQueries({ queryKey: ['posts-feed'] });
+            queryClient.invalidateQueries({ queryKey: ['profile-posts'] });
         },
     });
+
+    const handleOpenList = async (type) => {
+        setModalTitle(type === 'followers' ? 'Followers' : 'Following');
+        setIsListModalOpen(true);
+        setIsListLoading(true);
+        try {
+            const { data } = await api.get(`/users/${targetUserId}/${type}`);
+            setModalUsers(data);
+        } catch (error) {
+            toast.error(`Failed to load ${type}`);
+            setIsListModalOpen(false);
+        } finally {
+            setIsListLoading(false);
+        }
+    };
 
     useEffect(() => {
         if (!authLoading && !urlUserId && !currentUser) {
@@ -176,46 +232,67 @@ const Profile = () => {
 
                 {/* Header Section */}
                 <div className="px-4 sm:px-8 pb-6 relative z-10 w-full mb-1">
-                    <div className="flex justify-between items-start -mt-[15%] sm:-mt-[12%] md:-mt-[11%]">
+                    <div className="flex justify-between items-end -mt-[12%] sm:-mt-[10%] mb-4">
                         <div className="flex-shrink-0 relative">
                             <img
                                 src={profileUser.profilePic || `https://ui-avatars.com/api/?name=${encodeURIComponent(profileUser.username)}&background=efefef&color=333&bold=true`}
                                 alt={profileUser.username}
-                                className="w-[110px] h-[110px] sm:w-[152px] sm:h-[152px] rounded-full object-cover border-4 border-white shadow-sm bg-white"
+                                className="w-[100px] h-[100px] sm:w-[150px] sm:h-[150px] rounded-full object-cover border-4 border-white shadow-sm bg-white"
                             />
-                        </div>
-
-                        <div className="flex items-center gap-2 pt-[16%] sm:pt-[13%] md:pt-[12%]">
-                            {isOwnProfile ? (
-                                <>
-                                    <button onClick={() => setIsEditModalOpen(true)} className="px-4 py-1.5 border border-gray-500 hover:bg-gray-100/80 hover:border-gray-700 text-gray-700 text-[15px] font-medium rounded-full transition-colors flex items-center justify-center h-[34px] sm:h-[40px]">
-                                        Edit profile
-                                    </button>
-                                    <button onClick={() => navigate('/settings')} className="w-[34px] h-[34px] sm:w-[40px] sm:h-[40px] border border-gray-500 focus:outline-none text-gray-600 hover:bg-gray-100/80 hover:border-gray-700 rounded-full flex items-center justify-center transition-colors">
-                                        <Settings size={18} />
-                                    </button>
-                                </>
-                            ) : (
-                                <button
-                                    onClick={() => followMutation.mutate({ isFollowing })}
-                                    disabled={followMutation.isPending}
-                                    className={`px-5 py-1.5 text-[15px] font-medium rounded-full transition-colors flex items-center justify-center h-[34px] sm:h-[40px] border ${isFollowing ? 'bg-white hover:bg-gray-100 text-gray-600 border-gray-500' : 'bg-[#0a66c2] hover:bg-[#004182] text-white border-[#0a66c2]'}`}
-                                >
-                                    {isFollowing ? 'Following' : 'Follow'}
-                                </button>
-                            )}
                         </div>
                     </div>
 
                     <div className="mt-4 px-1 sm:px-2">
-                        <div className="flex flex-col sm:flex-row sm:items-baseline sm:gap-2 mb-1.5">
-                            <h2 className="text-2xl sm:text-[26px] font-bold text-gray-900 leading-tight">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6 mb-4">
+                            <h2 className="text-2xl sm:text-[28px] font-connect font-black text-gray-900 leading-tight">
                                 {profileUser.username}
                             </h2>
-                            {profileUser.pronouns && (
-                                <span className="text-gray-500 font-normal text-sm sm:mt-1">({profileUser.pronouns})</span>
-                            )}
+                            <div className="flex items-center gap-2">
+                                {isOwnProfile ? (
+                                    <>
+                                        <button onClick={() => setIsEditModalOpen(true)} className="px-5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-900 text-sm font-bold rounded-lg transition-all border border-gray-200">
+                                            Edit profile
+                                        </button>
+                                        <button onClick={() => navigate('/settings')} className="p-2 bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-lg transition-all border border-gray-200">
+                                            <Settings size={18} />
+                                        </button>
+                                    </>
+                                ) : (
+                                    <button
+                                        onClick={() => followMutation.mutate({ isFollowing })}
+                                        disabled={followMutation.isPending}
+                                        className={`px-6 py-1.5 text-sm font-bold rounded-lg transition-all ${isFollowing ? 'bg-gray-100 text-gray-900 hover:bg-gray-200 border border-gray-200' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm'}`}
+                                    >
+                                        {isFollowing ? 'Following' : 'Follow'}
+                                    </button>
+                                )}
+                            </div>
                         </div>
+
+                        <div className="flex items-center gap-6 sm:gap-10 mb-6 py-4 border-y border-gray-50 sm:border-none sm:py-0">
+                            <div className="flex flex-col sm:flex-row items-center sm:gap-1.5">
+                                <span className="font-bold text-gray-900 text-base">{stats.posts}</span>
+                                <span className="text-gray-500 text-sm sm:text-base">posts</span>
+                            </div>
+                            <div
+                                onClick={() => handleOpenList('followers')}
+                                className="flex flex-col sm:flex-row items-center sm:gap-1.5 cursor-pointer group"
+                            >
+                                <span className="font-bold text-gray-900 text-base group-hover:text-blue-600">{stats.followers}</span>
+                                <span className="text-gray-500 text-sm sm:text-base group-hover:text-blue-600">followers</span>
+                            </div>
+                            <div
+                                onClick={() => handleOpenList('following')}
+                                className="flex flex-col sm:flex-row items-center sm:gap-1.5 cursor-pointer group"
+                            >
+                                <span className="font-bold text-gray-900 text-base group-hover:text-blue-600">{stats.following}</span>
+                                <span className="text-gray-500 text-sm sm:text-base group-hover:text-blue-600">following</span>
+                            </div>
+                        </div>
+
+                        {profileUser.pronouns && (
+                            <p className="text-gray-500 font-medium text-sm -mt-2 mb-1">{profileUser.pronouns}</p>
+                        )}
 
                         {profileUser.bio && (
                             <p className="whitespace-pre-wrap text-gray-900 text-[15px] leading-relaxed max-w-[800px] mb-3">
@@ -247,13 +324,6 @@ const Profile = () => {
                             </div>
                         )}
 
-                        <div className="flex flex-col sm:flex-row sm:items-center mt-3 gap-y-3 gap-x-4">
-                            <div className="flex items-center gap-3 text-[14px] text-gray-600 font-medium">
-                                <span className="hover:text-[#0a66c2] hover:underline cursor-pointer transition-colors"><span className="font-bold text-gray-900">{stats.followers}</span> followers</span>
-                                <span className="hover:text-[#0a66c2] hover:underline cursor-pointer transition-colors"><span className="font-bold text-gray-900">{stats.following}</span> following</span>
-                                <span><span className="font-bold text-gray-900">{stats.posts}</span> posts</span>
-                            </div>
-                        </div>
                     </div>
                 </div>
 
@@ -342,6 +412,14 @@ const Profile = () => {
                         queryClient.invalidateQueries({ queryKey: ['profile', targetUserId] });
                         queryClient.invalidateQueries({ queryKey: ['posts-feed'] });
                     }}
+                />
+
+                <UserListModal
+                    isOpen={isListModalOpen}
+                    onClose={() => setIsListModalOpen(false)}
+                    title={modalTitle}
+                    users={modalUsers}
+                    isLoading={isListLoading}
                 />
             </div>
         </div>

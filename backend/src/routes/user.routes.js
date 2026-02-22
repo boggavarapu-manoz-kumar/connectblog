@@ -7,15 +7,19 @@ const {
     unfollowUser,
     toggleBookmark,
     deleteUserAccount,
-    getUsers
+    getUsers,
+    getFollowers,
+    getFollowing
 } = require('../controllers/user.controller');
 const { protect } = require('../middleware/auth.middleware');
 
 router.get('/', getUsers);
 router.put('/profile', protect, updateUserProfile);
 router.delete('/profile', protect, deleteUserAccount);
-router.put('/:id/follow', protect, followUser);
-router.put('/:id/unfollow', protect, unfollowUser);
+router.route('/:id/follow').put(protect, followUser);
+router.route('/:id/unfollow').put(protect, unfollowUser);
+router.route('/:id/followers').get(getFollowers);
+router.route('/:id/following').get(getFollowing);
 router.put('/bookmarks/:postId', protect, toggleBookmark);
 router.get('/:id', getUserProfile);
 

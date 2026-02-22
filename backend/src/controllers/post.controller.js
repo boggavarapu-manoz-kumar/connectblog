@@ -320,24 +320,23 @@ const likePost = async (req, res) => {
             return res.status(404).json({ message: 'Post not found' });
         }
 
-        if (post.likes.includes(req.user.id)) {
-            return res.status(400).json({ message: 'Post already liked' });
-        }
-
-        post.likes.push(req.user.id);
-        await post.save();
+        // Idempotent add using $addToSet
+        await post.updateOne({ $addToSet: { likes: req.user.id } });
 
         // ------------------ Notification Engine Trigger ------------------
         sendNotification(req, {
             recipientId: post.author,
             type: 'like',
             post: post._id
-        }).catch(console.error);
+        }).catch(err => console.error('[Notification Error]', err.message));
         // -----------------------------------------------------------------
 
-        res.status(200).json(post.likes);
+        // Fetch updated likes for the response
+        const updatedPost = await Post.findById(req.params.id).select('likes');
+        res.status(200).json(updatedPost.likes);
     } catch (error) {
-        res.status(500).send('Server Error');
+        console.error('[Like Error]', error);
+        res.status(500).json({ message: 'Server Error while liking post' });
     }
 };
 
@@ -352,17 +351,14 @@ const unlikePost = async (req, res) => {
             return res.status(404).json({ message: 'Post not found' });
         }
 
-        if (!post.likes.includes(req.user.id)) {
-            return res.status(400).json({ message: 'Post has not yet been liked' });
-        }
+        // Idempotent remove using $pull
+        await post.updateOne({ $pull: { likes: req.user.id } });
 
-        const index = post.likes.indexOf(req.user.id);
-        post.likes.splice(index, 1);
-        await post.save();
-
-        res.status(200).json(post.likes);
+        const updatedPost = await Post.findById(req.params.id).select('likes');
+        res.status(200).json(updatedPost.likes);
     } catch (error) {
-        res.status(500).send('Server Error');
+        console.error('[Unlike Error]', error);
+        res.status(500).json({ message: 'Server Error while unliking post' });
     }
 };
 

@@ -47,7 +47,7 @@ const Home = () => {
         getNextPageParam: (lastPage) => {
             return lastPage.hasMore ? lastPage.currentPage + 1 : undefined;
         },
-        staleTime: 1000 * 60 * 15, // 15 mins stale time (Best Ever Caching)
+        staleTime: 1000 * 60 * 15, // 15 minutes cache
     });
 
     const observer = useRef();

@@ -25,8 +25,7 @@ router.post('/', protect, upload.single('image'), async (req, res) => {
             return res.status(400).json({ message: 'No image provided' });
         }
 
-        // 🚀 High-Performance Cloud Proxy Algorithm
-        // Native streaming from memory buffer to freeimage.host API
+        // Upload to freeimage.host API
         const formData = new FormData();
         formData.append('key', '6d207e02198a847aa98d0a2a901485a5');
         formData.append('action', 'upload');
@@ -60,8 +59,8 @@ router.post('/', protect, upload.single('image'), async (req, res) => {
         }
 
     } catch (error) {
-        console.error('Critical Upload Lag-Fix Failure:', error);
-        res.status(500).json({ message: 'Image processing failed on the server clusters.' });
+        console.error('Image Upload Error:', error);
+        res.status(500).json({ message: 'Image upload failed. Please try again.' });
     }
 });
 

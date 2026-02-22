@@ -132,30 +132,45 @@ const updateUserProfile = async (req, res) => {
 // @route   PUT /api/users/:id/follow
 // @access  Private
 const followUser = async (req, res) => {
-    if (req.user.id === req.params.id) {
-        return res.status(400).json({ message: 'You cannot follow yourself' });
-    }
-
     try {
-        const userToFollow = await User.findById(req.params.id);
-        const currentUser = await User.findById(req.user.id);
+        let userToFollow;
+        const { id } = req.params;
 
-        if (userToFollow.followers.some(f => f.toString() === req.user.id)) {
-            return res.status(400).json({ message: 'You already follow this user' });
+        if (mongoose.Types.ObjectId.isValid(id)) {
+            userToFollow = await User.findById(id);
+        } else {
+            userToFollow = await User.findOne({ username: id });
         }
 
-        await userToFollow.updateOne({ $push: { followers: req.user.id } });
-        await currentUser.updateOne({ $push: { following: req.params.id } });
+        if (!userToFollow) {
+            return res.status(404).json({ message: 'User to follow not found' });
+        }
+
+        if (userToFollow._id.toString() === req.user.id) {
+            return res.status(400).json({ message: 'You cannot follow yourself' });
+        }
+
+        const currentUser = await User.findById(req.user.id);
+
+        // Idempotent add using $addToSet
+        await userToFollow.updateOne({ $addToSet: { followers: req.user.id } });
+        await currentUser.updateOne({ $addToSet: { following: userToFollow._id } });
 
         // ------------- Notify Target User ------------------
         sendNotification(req, {
-            recipientId: req.params.id,
+            recipientId: userToFollow._id,
             type: 'follow'
-        }).catch(console.error);
+        }).catch(err => console.error('[Notification Error]', err.message));
 
-        return res.status(200).json({ message: 'User followed', status: 'following' });
+        return res.status(200).json({
+            message: 'User followed successfully',
+            status: 'following',
+            followerId: req.user.id,
+            followingId: userToFollow._id
+        });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error('[Follow Error]', error);
+        res.status(500).json({ message: 'Server error while following user' });
     }
 };
 
@@ -163,23 +178,30 @@ const followUser = async (req, res) => {
 // @route   PUT /api/users/:id/unfollow
 // @access  Private
 const unfollowUser = async (req, res) => {
-    if (req.user.id === req.params.id) {
-        return res.status(400).json({ message: 'You cannot unfollow yourself' });
-    }
-
     try {
-        const userToUnfollow = await User.findById(req.params.id);
+        let userToUnfollow;
+        const { id } = req.params;
+
+        if (mongoose.Types.ObjectId.isValid(id)) {
+            userToUnfollow = await User.findById(id);
+        } else {
+            userToUnfollow = await User.findOne({ username: id });
+        }
+
+        if (!userToUnfollow) {
+            return res.status(404).json({ message: 'User to unfollow not found' });
+        }
+
         const currentUser = await User.findById(req.user.id);
 
-        if (userToUnfollow.followers.some(f => f.toString() === req.user.id)) {
-            await userToUnfollow.updateOne({ $pull: { followers: req.user.id } });
-            await currentUser.updateOne({ $pull: { following: req.params.id } });
-            res.status(200).json({ message: 'User unfollowed' });
-        } else {
-            res.status(403).json({ message: 'You do not follow this user' });
-        }
+        // Idempotent remove using $pull
+        await userToUnfollow.updateOne({ $pull: { followers: req.user.id } });
+        await currentUser.updateOne({ $pull: { following: userToUnfollow._id } });
+
+        res.status(200).json({ message: 'User unfollowed successfully', status: 'unfollowed' });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error('[Unfollow Error]', error);
+        res.status(500).json({ message: 'Server error while unfollowing user' });
     }
 };
 
@@ -224,6 +246,44 @@ const deleteUserAccount = async (req, res) => {
     }
 };
 
+// @desc    Get followers
+// @route   GET /api/users/:id/followers
+// @access  Public
+const getFollowers = async (req, res) => {
+    try {
+        const { id } = req.params;
+        let user;
+        if (mongoose.Types.ObjectId.isValid(id)) {
+            user = await User.findById(id).populate('followers', 'username profilePic bio');
+        } else {
+            user = await User.findOne({ username: id }).populate('followers', 'username profilePic bio');
+        }
+        if (!user) return res.status(404).json({ message: 'User not found' });
+        res.status(200).json(user.followers);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// @desc    Get following
+// @route   GET /api/users/:id/following
+// @access  Public
+const getFollowing = async (req, res) => {
+    try {
+        const { id } = req.params;
+        let user;
+        if (mongoose.Types.ObjectId.isValid(id)) {
+            user = await User.findById(id).populate('following', 'username profilePic bio');
+        } else {
+            user = await User.findOne({ username: id }).populate('following', 'username profilePic bio');
+        }
+        if (!user) return res.status(404).json({ message: 'User not found' });
+        res.status(200).json(user.following);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 module.exports = {
     getUserProfile,
     updateUserProfile,
@@ -231,5 +291,7 @@ module.exports = {
     unfollowUser,
     toggleBookmark,
     deleteUserAccount,
-    getUsers
+    getUsers,
+    getFollowers,
+    getFollowing
 };

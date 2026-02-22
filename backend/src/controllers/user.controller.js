@@ -1,7 +1,7 @@
 const User = require('../models/User.model');
 const Post = require('../models/Post.model');
-const { sendNotification } = require('../utils/notify');
 const mongoose = require('mongoose');
+const { invalidateCache } = require('../utils/cache');
 
 // @desc    Get all users (Discovery)
 // @route   GET /api/users
@@ -109,6 +109,11 @@ const updateUserProfile = async (req, res) => {
 
             const updatedUser = await user.save();
 
+            // Invalidate profile cache
+            invalidateCache(user._id.toString());
+            invalidateCache(user.username);
+            invalidateCache('api/users'); // Invalidate user discovery list
+
             res.status(200).json({
                 _id: updatedUser._id,
                 username: updatedUser.username,
@@ -156,6 +161,10 @@ const followUser = async (req, res) => {
         await userToFollow.updateOne({ $addToSet: { followers: req.user.id } });
         await currentUser.updateOne({ $addToSet: { following: userToFollow._id } });
 
+        // Invalidate feed and follower/following lists
+        invalidateCache(req.user.id); // Follower's feed might change
+        invalidateCache(userToFollow._id.toString()); // Followed's profile/followers list change
+
         // ------------- Notify Target User ------------------
         sendNotification(req, {
             recipientId: userToFollow._id,
@@ -197,6 +206,10 @@ const unfollowUser = async (req, res) => {
         // Idempotent remove using $pull
         await userToUnfollow.updateOne({ $pull: { followers: req.user.id } });
         await currentUser.updateOne({ $pull: { following: userToUnfollow._id } });
+
+        // Invalidate feed and follower/following lists
+        invalidateCache(req.user.id);
+        invalidateCache(userToUnfollow._id.toString());
 
         res.status(200).json({ message: 'User unfollowed successfully', status: 'unfollowed' });
     } catch (error) {

@@ -21,10 +21,10 @@ import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persist
 const queryClient = new QueryClient({
     defaultOptions: {
         queries: {
-            staleTime: 1000 * 60 * 10, // 10 minutes cache
-            gcTime: 1000 * 60 * 60 * 24, // 24 Hours garbage collection
-            refetchOnWindowFocus: false,
-            retry: 1,
+            staleTime: 1000 * 60 * 5, // 5 minutes: Data stays fresh longer
+            gcTime: 1000 * 60 * 60 * 24, // 24 Hours: Keep in memory for a long time
+            refetchOnWindowFocus: true, // Auto-refetch when coming back to tab for real-time feel
+            retry: 2,
             refetchOnMount: 'always',
         },
     },

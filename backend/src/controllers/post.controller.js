@@ -2,6 +2,7 @@ const Post = require('../models/Post.model');
 const User = require('../models/User.model');
 const mongoose = require('mongoose');
 const { sendNotification, processMentions } = require('../utils/notify');
+const { invalidateCache } = require('../utils/cache');
 
 const getPosts = async (req, res) => {
     try {
@@ -255,6 +256,10 @@ const createPost = async (req, res) => {
         // Extract mentions asynchronously without blocking UI return
         processMentions(req, content, post._id).catch(console.error);
 
+        // Invalidate feeds
+        invalidateCache('api/posts');
+        invalidateCache(req.user.id);
+
         res.status(201).json(fullPost);
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -281,6 +286,10 @@ const updatePost = async (req, res) => {
             runValidators: true
         }).populate('author', 'username profilePic');
 
+        // Invalidate specific post and general feeds
+        invalidateCache(req.params.id);
+        invalidateCache('api/posts');
+
         res.status(200).json(updatedPost);
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -303,7 +312,13 @@ const deletePost = async (req, res) => {
         }
 
         await post.deleteOne();
-        res.status(200).json({ id: req.params.id });
+
+        // Invalidate
+        invalidateCache('api/posts'); // Invalidate general feed
+        invalidateCache(`api/posts?authorId=${req.user.id}`); // Invalidate user's own posts cache
+        invalidateCache(`api/posts/${req.params.id}`); // Invalidate the specific post cache
+
+        res.status(200).json({ message: 'Post removed' });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -323,7 +338,11 @@ const likePost = async (req, res) => {
         // Idempotent add using $addToSet
         await post.updateOne({ $addToSet: { likes: req.user.id } });
 
-        // ------------------ Notification Engine Trigger ------------------
+        // Invalidate
+        invalidateCache('api/posts'); // Invalidate general feed
+        invalidateCache(`api/posts/${req.params.id}`); // Invalidate the specific post cache
+
+        // ------------- Notify Author ------------------
         sendNotification(req, {
             recipientId: post.author,
             type: 'like',
@@ -353,6 +372,10 @@ const unlikePost = async (req, res) => {
 
         // Idempotent remove using $pull
         await post.updateOne({ $pull: { likes: req.user.id } });
+
+        // Invalidate
+        invalidateCache('api/posts'); // Invalidate general feed
+        invalidateCache(`api/posts/${req.params.id}`); // Invalidate the specific post cache
 
         const updatedPost = await Post.findById(req.params.id).select('likes');
         res.status(200).json(updatedPost.likes);

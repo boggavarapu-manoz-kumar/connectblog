@@ -368,6 +368,17 @@ const PostCard = ({ post, onPostUpdate }) => {
         }
     });
 
+    const prefetchPost = () => {
+        queryClient.prefetchQuery({
+            queryKey: ['post', post._id],
+            queryFn: async () => {
+                const { data } = await api.get(`/posts/${post._id}`);
+                return data;
+            },
+            staleTime: 1000 * 60 * 5, // 5 minutes
+        });
+    };
+
     return (
         <article className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-6 hover:shadow-md transition-shadow duration-200">
             <div className="p-4 flex items-center justify-between">
@@ -437,7 +448,11 @@ const PostCard = ({ post, onPostUpdate }) => {
                 </div>
             </div>
 
-            <Link to={`/posts/${post._id}`} className="block group">
+            <Link
+                to={`/posts/${post._id}`}
+                onMouseEnter={prefetchPost}
+                className="block group"
+            >
                 <div className="px-4 pb-2">
                     <h2 className="text-[17px] font-bold text-gray-900 mb-1 group-hover:text-primary-600 transition-colors leading-snug">
                         {post.title}
@@ -498,75 +513,77 @@ const PostCard = ({ post, onPostUpdate }) => {
                 </div>
             </div>
 
-            {showComments && (
-                <div className="px-4 py-3 bg-gray-50 border-t border-gray-100">
-                    <form onSubmit={handleCommentSubmit} className="flex gap-2 mb-4">
-                        <input
-                            type="text"
-                            value={commentText}
-                            onChange={(e) => setCommentText(e.target.value)}
-                            placeholder="Write a comment..."
-                            className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-primary-500"
-                        />
-                        <button
-                            type="submit"
-                            disabled={!commentText.trim()}
-                            className="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-full hover:bg-primary-700 disabled:opacity-50 transition-colors"
-                        >
-                            Post
-                        </button>
-                    </form>
+            {
+                showComments && (
+                    <div className="px-4 py-3 bg-gray-50 border-t border-gray-100">
+                        <form onSubmit={handleCommentSubmit} className="flex gap-2 mb-4">
+                            <input
+                                type="text"
+                                value={commentText}
+                                onChange={(e) => setCommentText(e.target.value)}
+                                placeholder="Write a comment..."
+                                className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-primary-500"
+                            />
+                            <button
+                                type="submit"
+                                disabled={!commentText.trim()}
+                                className="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-full hover:bg-primary-700 disabled:opacity-50 transition-colors"
+                            >
+                                Post
+                            </button>
+                        </form>
 
-                    <div className="space-y-4 max-h-60 overflow-y-auto custom-scrollbar pr-2">
-                        {post.comments?.length > 0 ? (
-                            post.comments.map((comment) => (
-                                <div key={comment._id} className="flex space-x-3">
-                                    <Link to={`/profile/${comment.user?._id || comment.user}`}>
-                                        <img
-                                            src={comment.user?.profilePic || `https://ui-avatars.com/api/?name=${encodeURIComponent(comment.user?.username || 'User')}&background=efefef&color=333&bold=true`}
-                                            alt={comment.user?.username}
-                                            className="h-8 w-8 rounded-full object-cover border border-gray-200"
-                                        />
-                                    </Link>
-                                    <div className="flex-1 bg-white p-3 rounded-2xl shadow-sm border border-gray-100">
-                                        <div className="flex items-center justify-between mb-1">
-                                            <Link to={`/profile/${comment.user?._id || comment.user}`} className="text-sm font-bold text-gray-900 hover:text-primary-600">
-                                                {comment.user?.username}
-                                            </Link>
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-[10px] text-gray-400 font-medium lowercase">
-                                                    {comment.createdAt ? formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true }) : 'just now'}
-                                                </span>
-                                                {(user?._id === (comment.user?._id || comment.user) || isAuthor) && (
-                                                    <button
-                                                        onClick={() => {
-                                                            if (window.confirm("Delete this comment?")) {
-                                                                deleteCommentMutation.mutate(comment._id);
-                                                            }
-                                                        }}
-                                                        className="text-gray-400 hover:text-red-500 transition-colors p-1"
-                                                        title="Delete comment"
-                                                    >
-                                                        <Trash2 size={12} />
-                                                    </button>
-                                                )}
+                        <div className="space-y-4 max-h-60 overflow-y-auto custom-scrollbar pr-2">
+                            {post.comments?.length > 0 ? (
+                                post.comments.map((comment) => (
+                                    <div key={comment._id} className="flex space-x-3">
+                                        <Link to={`/profile/${comment.user?._id || comment.user}`}>
+                                            <img
+                                                src={comment.user?.profilePic || `https://ui-avatars.com/api/?name=${encodeURIComponent(comment.user?.username || 'User')}&background=efefef&color=333&bold=true`}
+                                                alt={comment.user?.username}
+                                                className="h-8 w-8 rounded-full object-cover border border-gray-200"
+                                            />
+                                        </Link>
+                                        <div className="flex-1 bg-white p-3 rounded-2xl shadow-sm border border-gray-100">
+                                            <div className="flex items-center justify-between mb-1">
+                                                <Link to={`/profile/${comment.user?._id || comment.user}`} className="text-sm font-bold text-gray-900 hover:text-primary-600">
+                                                    {comment.user?.username}
+                                                </Link>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[10px] text-gray-400 font-medium lowercase">
+                                                        {comment.createdAt ? formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true }) : 'just now'}
+                                                    </span>
+                                                    {(user?._id === (comment.user?._id || comment.user) || isAuthor) && (
+                                                        <button
+                                                            onClick={() => {
+                                                                if (window.confirm("Delete this comment?")) {
+                                                                    deleteCommentMutation.mutate(comment._id);
+                                                                }
+                                                            }}
+                                                            className="text-gray-400 hover:text-red-500 transition-colors p-1"
+                                                            title="Delete comment"
+                                                        >
+                                                            <Trash2 size={12} />
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </div>
+                                            <p className="text-sm text-gray-700 leading-relaxed font-sans">
+                                                {comment.text}
+                                            </p>
                                         </div>
-                                        <p className="text-sm text-gray-700 leading-relaxed font-sans">
-                                            {comment.text}
-                                        </p>
                                     </div>
+                                ))
+                            ) : (
+                                <div className="text-center py-6">
+                                    <p className="text-gray-400 text-sm font-medium italic">No comments yet. Be the first to start the conversation!</p>
                                 </div>
-                            ))
-                        ) : (
-                            <div className="text-center py-6">
-                                <p className="text-gray-400 text-sm font-medium italic">No comments yet. Be the first to start the conversation!</p>
-                            </div>
-                        )}
+                            )}
+                        </div>
                     </div>
-                </div>
-            )}
-        </article>
+                )
+            }
+        </article >
     );
 };
 

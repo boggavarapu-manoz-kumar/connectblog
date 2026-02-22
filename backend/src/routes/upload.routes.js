@@ -25,23 +25,21 @@ router.post('/', protect, upload.single('image'), async (req, res) => {
             return res.status(400).json({ message: 'No image provided' });
         }
 
-        // Convert raw image buffer into a lightweight base64 string
-        const base64Image = req.file.buffer.toString('base64');
-
-        // Construct payload for FreeImage.host blazing fast API
-        const formData = new URLSearchParams();
+        // Extremely fast Binary streaming directly from memory to API
+        // Bypass all slow Base64 stringification by using native FormData & Blobs
+        const formData = new FormData();
         formData.append('key', '6d207e02198a847aa98d0a2a901485a5'); // Public free API key
         formData.append('action', 'upload');
-        formData.append('source', base64Image);
         formData.append('format', 'json');
 
-        // Upload to a true 3rd-party reliable image hosting server
+        // Wrap the raw memory buffer in a Blob for native transmission
+        const blob = new Blob([req.file.buffer], { type: req.file.mimetype });
+        formData.append('source', blob, req.file.originalname);
+
+        // Upload to the blazing fast reliable image hosting server
         const response = await fetch('https://freeimage.host/api/1/upload', {
             method: 'POST',
-            body: formData,
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            }
+            body: formData
         });
 
         const data = await response.json();

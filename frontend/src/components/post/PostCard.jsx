@@ -1,137 +1,112 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../services/api';
-import { Heart, MessageCircle, Share2, MoreHorizontal, Bookmark, Edit, Trash2, Archive } from 'lucide-react';
+import { Heart, MessageCircle, Share2, MoreHorizontal, Bookmark, Edit, Trash2, Archive, X } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import toast from 'react-hot-toast';
 
 const PostCard = ({ post, onPostUpdate }) => {
     const { user, updateUser } = useAuth();
-    const [isLiked, setIsLiked] = useState(post.likes.includes(user?._id));
-    const [likesCount, setLikesCount] = useState(post.likes.length);
-    const [showComments, setShowComments] = useState(false);
-    const [commentText, setCommentText] = useState('');
-    const [comments, setComments] = useState(post.comments || []);
-    const [loadingComment, setLoadingComment] = useState(false);
-    const [fetchedComments, setFetchedComments] = useState(false);
-    const isBookmarked = user?.bookmarks?.includes(post._id) || false;
-    const [showMenu, setShowMenu] = useState(false);
-
+    const queryClient = useQueryClient();
     const navigate = useNavigate();
 
-    const isAuthor = user?._id === (post.author._id || post.author);
+    const [showComments, setShowComments] = useState(false);
+    const [commentText, setCommentText] = useState('');
+    const [showMenu, setShowMenu] = useState(false);
 
-    // Toggle comments and fetch if needed
-    const toggleComments = async () => {
-        setShowComments(!showComments);
-        if (!showComments && !fetchedComments) {
-            try {
-                const { data } = await api.get(`/posts/${post._id}/comments`);
-                setComments(data);
-                setFetchedComments(true);
-            } catch (error) {
-                console.error('Failed to load full comments', error);
-            }
+    const isAuthor = user?._id === (post.author?._id || post.author);
+    const isLiked = post.likes?.includes(user?._id);
+    const likesCount = post.likes?.length || 0;
+    const isBookmarked = user?.bookmarks?.includes(post._id);
+
+    // 🚀 High-Performance Mutation: LIKE
+    const likeMutation = useMutation({
+        mutationFn: async ({ liked }) => {
+            const endpoint = liked ? `/posts/${post._id}/unlike` : `/posts/${post._id}/like`;
+            return api.put(endpoint);
+        },
+        onMutate: async ({ liked }) => {
+            await queryClient.cancelQueries({ queryKey: ['posts-feed'] });
+            await queryClient.cancelQueries({ queryKey: ['post', post._id] });
+
+            const previousFeed = queryClient.getQueryData(['posts-feed']);
+
+            // Optimistically update all instances of this post in the feed cache
+            queryClient.setQueriesData({ queryKey: ['posts-feed'] }, old => {
+                if (!old) return old;
+                return {
+                    ...old,
+                    pages: old.pages.map(page =>
+                        page.map(p => {
+                            if (p._id === post._id) {
+                                const newLikes = liked
+                                    ? p.likes.filter(id => id !== user._id)
+                                    : [...p.likes, user._id];
+                                return { ...p, likes: newLikes };
+                            }
+                            return p;
+                        })
+                    )
+                };
+            });
+
+            return { previousFeed };
+        },
+        onError: (err, variables, context) => {
+            queryClient.setQueryData(['posts-feed'], context.previousFeed);
+            toast.error("Action failed");
+        },
+        onSettled: () => {
+            queryClient.invalidateQueries({ queryKey: ['posts-feed'] });
+            queryClient.invalidateQueries({ queryKey: ['post', post._id] });
         }
-    };
+    });
 
-    const handleDeleteComment = async (commentId) => {
-        if (window.confirm('Delete this comment?')) {
-            try {
-                await api.delete(`/posts/${post._id}/comments/${commentId}`);
-                setComments(comments.filter(c => c._id !== commentId));
-                toast.success('Comment deleted');
-            } catch (error) {
-                toast.error('Failed to delete comment');
-            }
-        }
-    };
+    // 🚀 High-Performance Mutation: BOOKMARK
+    const bookmarkMutation = useMutation({
+        mutationFn: async () => {
+            return api.put(`/users/bookmarks/${post._id}`);
+        },
+        onMutate: async () => {
+            const previousUser = { ...user };
+            const newBookmarks = isBookmarked
+                ? user.bookmarks.filter(id => id !== post._id)
+                : [...(user.bookmarks || []), post._id];
 
-    // Handle Like/Unlike
-    const handleLike = async () => {
-        if (!user) {
-            toast.error('Please login to like posts');
-            return;
-        }
-
-        try {
-            if (isLiked) {
-                await api.put(`/posts/${post._id}/unlike`);
-                setLikesCount(prev => prev - 1);
-                setIsLiked(false);
-            } else {
-                await api.put(`/posts/${post._id}/like`);
-                setLikesCount(prev => prev + 1);
-                setIsLiked(true);
-            }
-        } catch (error) {
-            toast.error('Failed to update like');
-        }
-    };
-
-    // Handle Bookmark
-    const handleBookmark = async () => {
-        if (!user) {
-            toast.error('Please login to bookmark posts');
-            return;
-        }
-
-        try {
-            const res = await api.put(`/users/bookmarks/${post._id}`);
+            updateUser({ ...user, bookmarks: newBookmarks });
+            return { previousUser };
+        },
+        onError: (err, variables, context) => {
+            updateUser(context.previousUser);
+            toast.error("Failed to bookmark");
+        },
+        onSuccess: (res) => {
             toast.success(res.data.message);
-
-            // Sync user bookmarks globally
-            const updatedBookmarks = res.data.bookmarked
-                ? [...(user.bookmarks || []), post._id]
-                : (user.bookmarks || []).filter(id => id !== post._id);
-            updateUser({ ...user, bookmarks: updatedBookmarks });
-        } catch (error) {
-            toast.error('Failed to update bookmark');
+            queryClient.invalidateQueries({ queryKey: ['profile-private'] });
         }
-    };
+    });
 
-    // Handle Comment Submission
     const handleCommentSubmit = async (e) => {
         e.preventDefault();
-        if (!commentText.trim()) return;
+        if (!commentText.trim() || !user) return;
 
-        if (!user) {
-            toast.error('Please login to comment');
-            return;
-        }
-
-        setLoadingComment(true);
         try {
-            const { data } = await api.post(`/posts/${post._id}/comments`, { text: commentText });
-            setComments([data, ...comments]);
+            await api.post(`/posts/${post._id}/comments`, { text: commentText });
             setCommentText('');
             toast.success('Comment added!');
-            // Update global feed if needed, or just local state
             if (onPostUpdate) onPostUpdate();
+            queryClient.invalidateQueries({ queryKey: ['post-comments', post._id] });
         } catch (error) {
             toast.error('Failed to add comment');
-        } finally {
-            setLoadingComment(false);
         }
-    };
-
-    const handleDeletePost = async () => {
-        if (!window.confirm('Are you sure you want to delete this post? This cannot be undone.')) return;
-        try {
-            await api.delete(`/posts/${post._id}`);
-            toast.success('Post deleted successfully');
-            if (onPostUpdate) onPostUpdate();
-        } catch (error) {
-            toast.error('Failed to delete post');
-        }
-        setShowMenu(false);
     };
 
     const handleToggleArchive = async () => {
         try {
             await api.put(`/posts/${post._id}`, { isArchived: !post.isArchived });
-            toast.success(post.isArchived ? 'Post unarchived' : 'Post archived securely');
+            toast.success(post.isArchived ? 'Post unarchived' : 'Post archived');
             if (onPostUpdate) onPostUpdate();
         } catch (error) {
             toast.error('Failed to update archive status');
@@ -141,23 +116,18 @@ const PostCard = ({ post, onPostUpdate }) => {
 
     return (
         <article className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-6 hover:shadow-md transition-shadow duration-200">
-            {/* Header */}
             <div className="p-4 flex items-center justify-between">
                 <div className="flex items-center space-x-3">
-                    <Link to={`/profile/${post.author._id || post.author}`}>
+                    <Link to={`/profile/${post.author?._id || post.author}`}>
                         <img
-                            src={post.author.profilePic || `https://ui-avatars.com/api/?name=${encodeURIComponent(post.author.username)}&background=0ea5e9&color=fff&bold=true`}
-                            alt={post.author.username}
+                            src={post.author?.profilePic || `https://ui-avatars.com/api/?name=${encodeURIComponent(post.author?.username || 'User')}&background=0ea5e9&color=fff&bold=true`}
+                            alt={post.author?.username}
                             className="h-10 w-10 rounded-full object-cover border border-gray-100 shadow-sm"
-                            onError={(e) => {
-                                e.target.onerror = null;
-                                e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(post.author.username)}&background=0ea5e9&color=fff&bold=true`;
-                            }}
                         />
                     </Link>
                     <div>
-                        <Link to={`/profile/${post.author._id || post.author}`} className="font-semibold text-gray-900 hover:text-primary-600 transition-colors">
-                            {post.author.username}
+                        <Link to={`/profile/${post.author?._id || post.author}`} className="font-semibold text-gray-900 hover:text-primary-600 transition-colors">
+                            {post.author?.username}
                         </Link>
                         <p className="text-xs text-gray-500">
                             {formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}
@@ -166,43 +136,35 @@ const PostCard = ({ post, onPostUpdate }) => {
                 </div>
                 <div className="flex items-center space-x-1">
                     <button
-                        onClick={handleBookmark}
+                        onClick={() => bookmarkMutation.mutate()}
                         className={`p-2 rounded-full transition-colors ${isBookmarked ? 'text-primary-600 bg-primary-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'}`}
-                        title="Save Post"
                     >
                         <Bookmark size={20} className={isBookmarked ? "fill-current" : ""} />
                     </button>
 
                     {isAuthor && (
                         <div className="relative">
-                            <button
-                                onClick={() => setShowMenu(!showMenu)}
-                                className="text-gray-400 p-2 rounded-full hover:bg-gray-50 transition-colors"
-                            >
+                            <button onClick={() => setShowMenu(!showMenu)} className="text-gray-400 p-2 rounded-full hover:bg-gray-50 transition-colors">
                                 <MoreHorizontal size={20} />
                             </button>
-
                             {showMenu && (
                                 <>
                                     <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)}></div>
                                     <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-100 z-20 py-2 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                                        <button
-                                            onClick={() => navigate(`/edit-post/${post._id}`)}
-                                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                                        >
+                                        <button onClick={() => navigate(`/edit-post/${post._id}`)} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
                                             <Edit size={16} /> Edit Post
                                         </button>
-                                        <button
-                                            onClick={handleToggleArchive}
-                                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                                        >
+                                        <button onClick={handleToggleArchive} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
                                             <Archive size={16} /> {post.isArchived ? 'Unarchive' : 'Archive'}
                                         </button>
                                         <div className="border-t border-gray-100 my-1"></div>
-                                        <button
-                                            onClick={handleDeletePost}
-                                            className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
-                                        >
+                                        <button onClick={async () => {
+                                            if (window.confirm('Delete post?')) {
+                                                await api.delete(`/posts/${post._id}`);
+                                                toast.success('Deleted');
+                                                if (onPostUpdate) onPostUpdate();
+                                            }
+                                        }} className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2">
                                             <Trash2 size={16} /> Delete Post
                                         </button>
                                     </div>
@@ -213,46 +175,30 @@ const PostCard = ({ post, onPostUpdate }) => {
                 </div>
             </div>
 
-            {/* Content Link wrapper */}
             <Link to={`/posts/${post._id}`} className="block group">
                 <div className="px-4 pb-2">
                     <h2 className="text-[17px] font-bold text-gray-900 mb-1 group-hover:text-primary-600 transition-colors leading-snug">
                         {post.title}
                     </h2>
-                    <div className="text-gray-700 text-[14px] leading-relaxed mb-3 font-sans prose prose-sm max-w-none prose-p:my-1 text-container-styles">
+                    <div className="text-gray-700 text-[14px] leading-relaxed mb-3 font-sans prose prose-sm max-w-none prose-p:my-1">
                         <div
                             dangerouslySetInnerHTML={{
-                                __html: (post?.content?.length > 300
+                                __html: (post.content?.length > 300
                                     ? post.content.substring(0, 300) + '...'
-                                    : post?.content || '').replace(/@([a-zA-Z0-9_]+)/g, '<a href="/profile/$1" style="color: #0ea5e9; font-weight: 700; text-decoration: none;" onmouseover="this.style.textDecoration=\'underline\'" onmouseout="this.style.textDecoration=\'none\'">@$1</a>')
+                                    : post.content || '').replace(/@([a-zA-Z0-9_]+)/g, '<a href="/profile/$1" style="color: #0ea5e9; font-weight: 700; text-decoration: none;">@$1</a>')
                             }}
                         />
-                        {post?.content?.length > 300 && (
-                            <span className="text-gray-500 font-medium mt-1 inline-block group-hover:underline cursor-pointer">read more</span>
-                        )}
                     </div>
                 </div>
 
-                {/* Hashtags Display */}
                 {post.hashtags && post.hashtags.length > 0 && (
                     <div className="px-4 pb-3 flex flex-wrap gap-2">
                         {post.hashtags.map((tag, index) => (
-                            <span
-                                key={index}
-                                className="text-sm font-semibold text-primary-600 hover:text-primary-800 hover:underline transition-colors z-10 relative cursor-pointer"
-                                onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    navigate(`/?search=${encodeURIComponent(tag)}`);
-                                }}
-                            >
-                                #{tag}
-                            </span>
+                            <span key={index} className="text-sm font-semibold text-primary-600 hover:underline">#{tag}</span>
                         ))}
                     </div>
                 )}
 
-                {/* Image */}
                 {post.image && (
                     <div className="w-full bg-[#f8f9fa] border-y border-gray-100 overflow-hidden relative">
                         <img
@@ -266,105 +212,51 @@ const PostCard = ({ post, onPostUpdate }) => {
                                 e.target.className = "w-full h-32 object-cover opacity-50 grayscale";
                             }}
                         />
-                        <div className="absolute inset-0 bg-black/opacity-0 group-hover:bg-black/5 transition-colors duration-200"></div>
                     </div>
                 )}
             </Link>
 
-            {/* Action Buttons */}
             <div className="px-4 py-3 border-t border-gray-50 flex items-center justify-between">
                 <div className="flex items-center space-x-6">
                     <button
-                        onClick={handleLike}
+                        onClick={() => likeMutation.mutate({ liked: isLiked })}
                         className={`flex items-center space-x-2 group ${isLiked ? 'text-red-500' : 'text-gray-500 hover:text-red-500'}`}
                     >
                         <Heart size={20} className={`transform group-hover:scale-110 transition-transform ${isLiked ? 'fill-current' : ''}`} />
-                        <span className="font-medium text-sm">
-                            {likesCount}
-                        </span>
+                        <span className="font-medium text-sm">{likesCount}</span>
                     </button>
 
                     <button
-                        onClick={toggleComments}
+                        onClick={() => setShowComments(!showComments)}
                         className="flex items-center space-x-2 text-gray-500 hover:text-blue-500 group"
                     >
                         <MessageCircle size={20} className="transform group-hover:scale-110 transition-transform" />
-                        <span className="font-medium text-sm">{comments.length}</span>
-                    </button>
-
-                    <button className="flex items-center space-x-2 text-gray-500 hover:text-green-500 group">
-                        <Share2 size={20} className="transform group-hover:scale-110 transition-transform" />
+                        <span className="font-medium text-sm">{post.comments?.length || 0}</span>
                     </button>
                 </div>
             </div>
 
-            {/* Comments Section */}
-            {
-                showComments && (
-                    <div className="px-4 py-3 bg-gray-50 border-t border-gray-100">
-                        {/* Comment Form */}
-                        <form onSubmit={handleCommentSubmit} className="flex gap-2 mb-4">
-                            <input
-                                type="text"
-                                value={commentText}
-                                onChange={(e) => setCommentText(e.target.value)}
-                                placeholder="Write a comment..."
-                                className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                            />
-                            <button
-                                type="submit"
-                                disabled={!commentText.trim() || loadingComment}
-                                className="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-full hover:bg-primary-700 disabled:opacity-50 transition-colors"
-                            >
-                                Post
-                            </button>
-                        </form>
-
-                        {/* Comments List */}
-                        <div className="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
-                            {comments.length > 0 ? (
-                                comments.map((comment, index) => (
-                                    <div key={comment._id || index} className="flex space-x-3 group items-start">
-                                        <Link to={`/profile/${comment.user?._id}`}>
-                                            <img
-                                                src={comment.user?.profilePic || `https://ui-avatars.com/api/?name=${encodeURIComponent(comment.user?.username || 'User')}&background=0ea5e9&color=fff&bold=true`}
-                                                alt="User"
-                                                className="w-8 h-8 rounded-full border border-gray-200 mt-1 object-cover"
-                                                onError={(e) => {
-                                                    e.target.onerror = null;
-                                                    e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(comment.user?.username || 'User')}&background=0ea5e9&color=fff&bold=true`;
-                                                }}
-                                            />
-                                        </Link>
-                                        <div className="flex-1">
-                                            <div className="bg-white p-3 rounded-tr-xl rounded-br-xl rounded-bl-xl shadow-sm border border-gray-100 flex justify-between items-start">
-                                                <div>
-                                                    <Link to={`/profile/${comment.user?._id}`} className="text-xs font-bold text-gray-900 hover:text-primary-600 transition-colors">
-                                                        {comment.user?.username || 'User'}
-                                                    </Link>
-                                                    <p className="text-sm text-gray-700 mt-1">{comment.text}</p>
-                                                </div>
-                                                {user && (user._id === comment.user?._id || user._id === post.author._id || user._id === post.author) && (
-                                                    <button
-                                                        onClick={() => handleDeleteComment(comment._id)}
-                                                        className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1"
-                                                        title="Delete Comment"
-                                                    >
-                                                        <Trash2 size={14} />
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))
-                            ) : (
-                                <p className="text-center text-gray-500 text-sm py-2">No comments yet. Be the first!</p>
-                            )}
-                        </div>
-                    </div>
-                )
-            }
-        </article >
+            {showComments && (
+                <div className="px-4 py-3 bg-gray-50 border-t border-gray-100">
+                    <form onSubmit={handleCommentSubmit} className="flex gap-2 mb-4">
+                        <input
+                            type="text"
+                            value={commentText}
+                            onChange={(e) => setCommentText(e.target.value)}
+                            placeholder="Write a comment..."
+                            className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        />
+                        <button
+                            type="submit"
+                            disabled={!commentText.trim()}
+                            className="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-full hover:bg-primary-700 disabled:opacity-50 transition-colors"
+                        >
+                            Post
+                        </button>
+                    </form>
+                </div>
+            )}
+        </article>
     );
 };
 

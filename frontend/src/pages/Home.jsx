@@ -1,6 +1,6 @@
 import { useRef, useCallback, useEffect } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 import PostCard from '../components/post/PostCard';
 import { Loader2, SearchX, ArrowLeft, User as UserIcon } from 'lucide-react';
@@ -9,6 +9,7 @@ import SearchHero from '../components/common/SearchHero';
 const Home = () => {
     const navigate = useNavigate();
     const location = useLocation();
+    const queryClient = useQueryClient();
     const searchParams = new URLSearchParams(location.search);
     const searchQuery = searchParams.get('search');
 
@@ -177,14 +178,29 @@ const Home = () => {
                         ) : (
                             <div className="space-y-8">
                                 {allPosts.map((post, index) => {
+                                    const prefetchProfile = () => {
+                                        const authorId = post.author?._id || post.author;
+                                        queryClient.prefetchQuery({
+                                            queryKey: ['profile', authorId],
+                                            queryFn: async () => {
+                                                const { data } = await api.get(`/users/${authorId}`);
+                                                return data;
+                                            },
+                                        });
+                                    };
+
                                     if (allPosts.length === index + 1) {
                                         return (
-                                            <div ref={lastPostElementRef} key={post._id}>
+                                            <div ref={lastPostElementRef} key={post._id} onMouseEnter={prefetchProfile}>
                                                 <PostCard post={post} onPostUpdate={() => refetch()} />
                                             </div>
                                         );
                                     } else {
-                                        return <PostCard key={post._id} post={post} onPostUpdate={() => refetch()} />;
+                                        return (
+                                            <div key={post._id} onMouseEnter={prefetchProfile}>
+                                                <PostCard post={post} onPostUpdate={() => refetch()} />
+                                            </div>
+                                        );
                                     }
                                 })}
 

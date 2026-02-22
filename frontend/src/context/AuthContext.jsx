@@ -14,15 +14,23 @@ export const AuthProvider = ({ children }) => {
 
     // Check if user is logged in
     const checkUserLoggedIn = async () => {
+        const savedUser = localStorage.getItem('user');
+        if (savedUser) {
+            setUser(JSON.parse(savedUser));
+            setLoading(false);
+        }
+
         try {
             const token = localStorage.getItem('token');
             if (token) {
                 const { data } = await api.get('/auth/me');
                 setUser(data);
+                localStorage.setItem('user', JSON.stringify(data));
             }
         } catch (error) {
             console.log('User check failed:', error);
             localStorage.removeItem('token');
+            localStorage.removeItem('user');
         } finally {
             setLoading(false);
         }
@@ -33,6 +41,7 @@ export const AuthProvider = ({ children }) => {
         try {
             const { data } = await api.post('/auth/login', { email, password });
             localStorage.setItem('token', data.token);
+            localStorage.setItem('user', JSON.stringify(data));
             setUser(data);
             toast.success('Login Successful! Welcome back.');
             return true;
@@ -47,6 +56,7 @@ export const AuthProvider = ({ children }) => {
         try {
             const { data } = await api.post('/auth/register', { username, email, password });
             localStorage.setItem('token', data.token);
+            localStorage.setItem('user', JSON.stringify(data));
             setUser(data);
             toast.success('Registration Successful! Welcome.');
             return true;
@@ -59,6 +69,7 @@ export const AuthProvider = ({ children }) => {
     // Logout function
     const logout = () => {
         localStorage.removeItem('token');
+        localStorage.removeItem('user');
         setUser(null);
         toast.success('Logged out successfully');
     };

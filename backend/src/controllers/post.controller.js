@@ -188,14 +188,15 @@ const getPosts = async (req, res) => {
 const getPost = async (req, res) => {
     try {
         const post = await Post.findById(req.params.id)
-            .populate('author', 'username profilePic bio')
+            .populate('author', 'username profilePic bio pronouns socialLinks')
             .populate({
                 path: 'comments',
                 populate: {
                     path: 'user',
                     select: 'username profilePic bio'
                 }
-            });
+            })
+            .lean();
 
         if (!post) {
             return res.status(404).json({ message: 'Post not found' });
@@ -343,21 +344,16 @@ const unlikePost = async (req, res) => {
 
 const getBookmarkedPosts = async (req, res) => {
     try {
-        const user = await User.findById(req.user.id);
+        const user = await User.findById(req.user.id).select('bookmarks').lean();
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
         }
 
         const posts = await Post.find({ _id: { $in: user.bookmarks } })
+            .select('title content image hashtags author createdAt likes comments isArchived')
             .populate('author', 'username profilePic')
-            .populate({
-                path: 'comments',
-                populate: {
-                    path: 'user',
-                    select: 'username profilePic'
-                }
-            })
-            .sort({ createdAt: -1 });
+            .sort({ createdAt: -1 })
+            .lean();
 
         res.status(200).json(posts);
     } catch (error) {
@@ -378,15 +374,10 @@ const getUserPosts = async (req, res) => {
             author: new mongoose.Types.ObjectId(userId),
             isArchived: false
         })
+            .select('title content image hashtags author createdAt likes comments')
             .populate('author', 'username profilePic')
-            .populate({
-                path: 'comments',
-                populate: {
-                    path: 'user',
-                    select: 'username profilePic'
-                }
-            })
-            .sort({ createdAt: -1 });
+            .sort({ createdAt: -1 })
+            .lean();
 
         res.status(200).json(posts);
     } catch (error) {

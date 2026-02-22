@@ -14,17 +14,30 @@ import Explore from './pages/Explore';
 import Notifications from './pages/Notifications';
 import { Toaster } from 'react-hot-toast';
 import ScrollToTop from './components/layout/ScrollToTop';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient } from '@tanstack/react-query';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
+import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
 
+// 🚀 Professional Algorithm 1: State Persistent Cache
+// This saves every API response into localStorage so the site works OFFLINE
+// and loads INSTANTLY from the device memory on revisit.
 const queryClient = new QueryClient({
     defaultOptions: {
         queries: {
-            staleTime: 1000 * 60 * 5, // 5 minutes cache before it's "stale"
-            gcTime: 1000 * 60 * 60, // Keep in garbage collection for 1 hour
-            refetchOnWindowFocus: false, // Don't annoy user with reloads on tab switch
-            retry: 1, // Retry once on failure
+            staleTime: 1000 * 60 * 10, // 10 minutes (Aggressive Caching)
+            gcTime: 1000 * 60 * 60 * 24, // 24 Hours in memory (Reduces Cloud Bill)
+            refetchOnWindowFocus: false,
+            retry: 1,
+            // 🚀 Algorithm 2: Background Sync
+            // It shows old data first (instant) then updates silently
+            refetchOnMount: 'always',
         },
     },
+});
+
+const persister = createSyncStoragePersister({
+    storage: window.localStorage,
+    key: 'CONNECT_BLOG_OFFLINE_CACHE',
 });
 
 // Protected Route Component
@@ -40,7 +53,10 @@ const ProtectedRoute = ({ children }) => {
 
 function App() {
     return (
-        <QueryClientProvider client={queryClient}>
+        <PersistQueryClientProvider
+            client={queryClient}
+            persistOptions={{ persister }}
+        >
             <AuthProvider>
                 <SocketProvider>
                     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
@@ -102,7 +118,7 @@ function App() {
                     </BrowserRouter>
                 </SocketProvider>
             </AuthProvider>
-        </QueryClientProvider>
+        </PersistQueryClientProvider>
     );
 }
 

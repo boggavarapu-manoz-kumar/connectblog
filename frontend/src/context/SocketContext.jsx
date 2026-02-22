@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
 import { useAuth } from './AuthContext';
+import api from '../services/api';
 import toast from 'react-hot-toast';
 
 const SocketContext = createContext();
@@ -15,6 +16,19 @@ export const SocketProvider = ({ children }) => {
 
     useEffect(() => {
         if (user) {
+            // Fetch initial unread count
+            const fetchInitialNotifications = async () => {
+                try {
+                    const { data } = await api.get('/notifications');
+                    setNotifications(data);
+                    const unread = data.filter(n => !n.isRead).length;
+                    setUnreadCount(unread);
+                } catch (err) {
+                    console.error('Failed to fetch initial notifications', err);
+                }
+            };
+            fetchInitialNotifications();
+
             // Adjust URL if your backend runs on a different port internally
             const newSocket = io('http://localhost:5000');
             setSocket(newSocket);

@@ -17,3 +17,5 @@ services:
         sync: false # Requires manual entry of standard MongoDB Atlas URI in Render Dashboard
       - key: JWT_SECRET
         generateValue: true
+      - key: BACKEND_URL
+        value: https://connectblog-backend.onrender.com # ← Replace with your ACTUAL Render URL

@@ -3,6 +3,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const app = require('./src/app');
 const connectDB = require('./src/config/db');
+const { startKeepAlive } = require('./src/utils/keepAlive');
 
 const PORT = process.env.PORT || 5000;
 
@@ -48,4 +49,11 @@ io.on('connection', (socket) => {
 
 server.listen(PORT, () => {
     console.log(`Server and Socket.io running on port ${PORT}`);
+
+    // ── Keep-Alive: prevents Render free-tier from sleeping ──────────────────
+    // Set BACKEND_URL to your deployed Render URL, e.g.:
+    //   https://connectblog-backend.onrender.com
+    // Leave unset (or keep empty) in local development — it will be skipped.
+    const backendUrl = process.env.BACKEND_URL || '';
+    startKeepAlive(backendUrl.trim());
 });

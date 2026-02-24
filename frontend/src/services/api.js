@@ -1,7 +1,11 @@
 import axios from 'axios';
 
+// In production (AWS Amplify), VITE_API_URL = your App Runner backend URL
+// In local dev, it falls back to '/api' (handled by Vite proxy)
 const api = axios.create({
-    baseURL: import.meta.env.VITE_API_URL || '/api',
+    baseURL: import.meta.env.VITE_API_URL
+        ? `${import.meta.env.VITE_API_URL}/api`
+        : '/api',
     headers: {
         'Content-Type': 'application/json',
     },

@@ -18,7 +18,16 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Security and Logging
 app.use(helmet({ crossOriginResourcePolicy: false }));
-app.use(cors());
+
+// In production the FRONTEND_URL env var should be your Amplify URL
+// e.g. https://main.xxxxxxxx.amplifyapp.com
+app.use(cors({
+    origin: process.env.NODE_ENV === 'production'
+        ? process.env.FRONTEND_URL
+        : '*',
+    credentials: true,
+}));
+
 app.use(morgan('dev'));
 app.use(cookieParser());
 

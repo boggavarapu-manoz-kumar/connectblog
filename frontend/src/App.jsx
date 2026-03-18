@@ -43,7 +43,13 @@ const persister = createSyncStoragePersister({
 const ProtectedRoute = ({ children }) => {
     const { user, loading } = useAuth();
 
-    if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+    if (loading) return (
+        <div className="min-h-screen bg-[#f3f2ef] flex flex-col items-center justify-center space-y-4">
+            <div className="w-16 h-16 border-4 border-[#0ea5e9]/20 border-t-[#0ea5e9] rounded-full animate-spin"></div>
+            <div className="text-[#0a66c2] font-semibold text-lg font-connect tracking-tight animate-pulse underline decoration-[#0ea5e9] decoration-2 underline-offset-4">ConnectBlog</div>
+            <p className="text-gray-500 text-sm font-medium">Securing your connection...</p>
+        </div>
+    );
 
     if (!user) return <Navigate to="/login" />;
 

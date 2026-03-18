@@ -1,0 +1,9 @@
+frontend/
+.git/
+.vscode/
+node_modules/
+backend/node_modules/
+tests/
+docs/
+*.md
+profile-backup.txt

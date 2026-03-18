@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import api from '../services/api';
 import PostCard from '../components/post/PostCard';
 import { Settings, Loader2, Link as LinkIcon, Bookmark, Grid, Archive, AlertCircle, RefreshCw, Instagram, Facebook, Linkedin, Globe, Code } from 'lucide-react';
@@ -42,19 +42,39 @@ const Profile = () => {
         refetchOnMount: true,
     });
 
-    // Query 2: User's Public Posts
-    const { data: postsData, isLoading: postsLoading, refetch: refetchPosts } = useQuery({
+    // Query 2: User's Public Posts — paginated (10 per page, infinite scroll)
+    const {
+        data: postsData,
+        isLoading: postsLoading,
+        fetchNextPage,
+        hasNextPage,
+        isFetchingNextPage,
+        refetch: refetchPosts
+    } = useInfiniteQuery({
         queryKey: ['profile-posts', targetUserId],
-        queryFn: async () => {
-            const { data } = await api.get(`/posts/user/${targetUserId}`);
+        queryFn: async ({ pageParam = 1 }) => {
+            const { data } = await api.get(`/posts/user/${targetUserId}?page=${pageParam}&limit=10`);
             return data;
         },
+        initialPageParam: 1,
+        getNextPageParam: (lastPage) => lastPage.hasMore ? lastPage.currentPage + 1 : undefined,
         enabled: !!profileUser?._id,
-        staleTime: 1000 * 60 * 2, // 2 min — always fresh on navigate back
+        staleTime: 1000 * 60 * 2,
         refetchOnMount: true,
     });
 
-    const posts = postsData?.posts || [];
+    const posts = postsData?.pages.flatMap(p => p.posts) || [];
+
+    // Intersection observer for profile-posts infinite scroll
+    const profilePostObserver = useRef();
+    const lastProfilePostRef = useCallback(node => {
+        if (postsLoading || isFetchingNextPage) return;
+        if (profilePostObserver.current) profilePostObserver.current.disconnect();
+        profilePostObserver.current = new IntersectionObserver(entries => {
+            if (entries[0].isIntersecting && hasNextPage) fetchNextPage();
+        });
+        if (node) profilePostObserver.current.observe(node);
+    }, [postsLoading, isFetchingNextPage, hasNextPage, fetchNextPage]);
 
     const isOwnProfile = profileUser?._id === (currentUser?._id || currentUser?.id);
 
@@ -360,7 +380,29 @@ const Profile = () => {
                             {activeTab === 'posts' && (
                                 <div className="space-y-6 max-w-2xl mx-auto">
                                     {posts.length > 0 ? (
-                                        posts.map(post => <PostCard key={post._id} post={post} onPostUpdate={() => refetchPosts()} />)
+                                        <>
+                                            {posts.map((post, index) => {
+                                                const isLast = index === posts.length - 1;
+                                                return (
+                                                    <div
+                                                        key={post._id}
+                                                        ref={isLast ? lastProfilePostRef : null}
+                                                    >
+                                                        <PostCard post={post} onPostUpdate={() => refetchPosts()} />
+                                                    </div>
+                                                );
+                                            })}
+                                            {isFetchingNextPage && (
+                                                <div className="flex justify-center py-6">
+                                                    <Loader2 className="w-8 h-8 text-primary-600 animate-spin" />
+                                                </div>
+                                            )}
+                                            {!hasNextPage && posts.length > 0 && (
+                                                <div className="text-center py-8">
+                                                    <span className="inline-block px-5 py-2 bg-gray-100 text-gray-400 rounded-full text-sm font-bold">You've seen all posts</span>
+                                                </div>
+                                            )}
+                                        </>
                                     ) : (
                                         <div className="text-center py-20 flex flex-col items-center">
                                             <div className="w-16 h-16 border-2 border-gray-900 rounded-full flex items-center justify-center mb-4">

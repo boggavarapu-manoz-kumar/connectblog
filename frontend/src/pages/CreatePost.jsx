@@ -30,15 +30,17 @@ const CreatePost = () => {
             return;
         }
 
-        const toastId = toast.loading('Compressing & Uploading...');
+        const toastId = toast.loading('Uploading image...');
         setUploadingImage(true);
 
         try {
+            // Light compression — just reduce payload size for faster upload.
+            // Cloudinary handles quality optimisation on their end automatically.
             const compressionOptions = {
-                maxSizeMB: 0.8,
-                maxWidthOrHeight: 1200,
-                useWebWorker: true,
-                initialQuality: 0.8
+                maxSizeMB: 1.5,          // 1.5MB max (was 0.8 — over-compressing wastes time)
+                maxWidthOrHeight: 1920,   // Keep decent resolution (Cloudinary will resize)
+                useWebWorker: true,       // Non-blocking — runs in background thread
+                initialQuality: 0.85      // High quality — Cloudinary applies smart compression
             };
 
             const compressedFile = await imageCompression(file, compressionOptions);
@@ -46,13 +48,14 @@ const CreatePost = () => {
             formData.append('image', compressedFile);
 
             const { data } = await api.post('/upload', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
+                headers: { 'Content-Type': 'multipart/form-data' },
+                timeout: 30000 // 30s timeout — don't hang forever on slow connection
             });
 
             setImageUrl(data.url);
-            toast.success('Ready to publish!', { id: toastId });
+            toast.success('Image ready!', { id: toastId });
         } catch (error) {
-            toast.error('Upload failed.', { id: toastId });
+            toast.error(error.response?.data?.message || 'Upload failed. Try again.', { id: toastId });
         } finally {
             setUploadingImage(false);
         }

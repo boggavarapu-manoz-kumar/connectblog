@@ -2,6 +2,7 @@ const User = require('../models/User.model');
 const Post = require('../models/Post.model');
 const mongoose = require('mongoose');
 const { invalidateCache } = require('../utils/cache');
+const { sendNotification } = require('../utils/notify');
 
 // @desc    Get all users (Discovery)
 // @route   GET /api/users
@@ -155,11 +156,11 @@ const followUser = async (req, res) => {
             return res.status(400).json({ message: 'You cannot follow yourself' });
         }
 
-        const currentUser = await User.findById(req.user.id);
-
-        // Idempotent add using $addToSet
-        await userToFollow.updateOne({ $addToSet: { followers: req.user.id } });
-        await currentUser.updateOne({ $addToSet: { following: userToFollow._id } });
+        // Idempotent add using $addToSet executed concurrently to speed up the process
+        await Promise.all([
+            User.updateOne({ _id: userToFollow._id }, { $addToSet: { followers: req.user.id } }),
+            User.updateOne({ _id: req.user.id }, { $addToSet: { following: userToFollow._id } })
+        ]);
 
         // Invalidate feed and follower/following lists
         invalidateCache(req.user.id); // Follower's feed might change
@@ -201,11 +202,11 @@ const unfollowUser = async (req, res) => {
             return res.status(404).json({ message: 'User to unfollow not found' });
         }
 
-        const currentUser = await User.findById(req.user.id);
-
-        // Idempotent remove using $pull
-        await userToUnfollow.updateOne({ $pull: { followers: req.user.id } });
-        await currentUser.updateOne({ $pull: { following: userToUnfollow._id } });
+        // Idempotent remove using $pull executed concurrently to speed up the process
+        await Promise.all([
+            User.updateOne({ _id: userToUnfollow._id }, { $pull: { followers: req.user.id } }),
+            User.updateOne({ _id: req.user.id }, { $pull: { following: userToUnfollow._id } })
+        ]);
 
         // Invalidate feed and follower/following lists
         invalidateCache(req.user.id);

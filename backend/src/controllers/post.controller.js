@@ -4,38 +4,39 @@ const mongoose = require('mongoose');
 const { sendNotification, processMentions } = require('../utils/notify');
 const { invalidateCache } = require('../utils/cache');
 
+// ─── GET /api/posts ────────────────────────────────────────────────────────────
+// Supports: ?page, ?limit, ?search, ?author, ?sort, ?archived
 const getPosts = async (req, res) => {
     try {
         const { sort, search, author, archived } = req.query;
-        const page = parseInt(req.query.page, 10) || 1;
-        const limit = parseInt(req.query.limit, 10) || 10;
+        const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+        const limit = Math.min(30, parseInt(req.query.limit, 10) || 10); // cap at 30 posts per page
         const skip = (page - 1) * limit;
 
-        let posts;
-
-        // Build search query match block
+        // ── Base match ──────────────────────────────────────────────────────
         let matchStage = { isArchived: archived === 'true' };
 
         if (search) {
-            const searchRegex = { $regex: search, $options: 'i' };
+            const rx = { $regex: search, $options: 'i' };
             matchStage.$or = [
-                { title: searchRegex },
-                { content: searchRegex },
-                { hashtags: searchRegex }
+                { title: rx },
+                { content: rx },
+                { hashtags: rx }
             ];
         }
 
-        if (author) {
-            if (mongoose.Types.ObjectId.isValid(author)) {
-                matchStage.author = new mongoose.Types.ObjectId(author);
-            }
+        if (author && mongoose.Types.ObjectId.isValid(author)) {
+            matchStage.author = new mongoose.Types.ObjectId(author);
         }
 
-        if (sort === 'trending') {
-            const pipeline = [];
-            if (Object.keys(matchStage).length > 0) pipeline.push({ $match: matchStage });
+        // ── Run count + data fetch in PARALLEL ──────────────────────────────
+        let postsPromise;
+        let countPromise = Post.countDocuments(matchStage); // always run in parallel
 
-            pipeline.push(
+        // ── TRENDING ────────────────────────────────────────────────────────
+        if (sort === 'trending') {
+            const pipeline = [
+                { $match: matchStage },
                 {
                     $lookup: {
                         from: 'users',
@@ -49,8 +50,8 @@ const getPosts = async (req, res) => {
                     $addFields: {
                         engagementScore: {
                             $add: [
-                                { $size: { $ifNull: ["$likes", []] } },
-                                { $multiply: [{ $size: { $ifNull: ["$comments", []] } }, 2] }
+                                { $size: { $ifNull: ['$likes', []] } },
+                                { $multiply: [{ $size: { $ifNull: ['$comments', []] } }, 2] }
                             ]
                         },
                         author: {
@@ -62,24 +63,26 @@ const getPosts = async (req, res) => {
                 },
                 { $sort: { engagementScore: -1, createdAt: -1 } },
                 { $skip: skip },
-                { $limit: limit }
+                { $limit: limit },
+                // Project only essential fields — exclude heavy authorDetails
+                {
+                    $project: {
+                        authorDetails: 0
+                    }
+                }
+            ];
+
+            postsPromise = Post.aggregate(pipeline).then(posts =>
+                Post.populate(posts, {
+                    path: 'comments',
+                    populate: { path: 'user', select: 'username profilePic' }
+                })
             );
 
-            posts = await Post.aggregate(pipeline);
-            posts = await Post.populate(posts, {
-                path: 'comments',
-                populate: {
-                    path: 'user',
-                    select: 'username profilePic'
-                }
-            });
+            // ── DEFAULT ALGORITHMIC FEED ────────────────────────────────────────
         } else if (!search && !author) {
-            // Instagram-Style Algorithmic Feed
-            // Blends: Popularity (Likes/Comments) + Personalization (Follows) + Freshness (Time Decay)
-            const pipeline = [];
-            if (Object.keys(matchStage).length > 0) pipeline.push({ $match: matchStage });
-
-            pipeline.push(
+            const pipeline = [
+                { $match: matchStage },
                 {
                     $lookup: {
                         from: 'users',
@@ -91,30 +94,24 @@ const getPosts = async (req, res) => {
                 { $unwind: '$authorDetails' },
                 {
                     $addFields: {
-                        // 1. Calculate base engagement popularity
                         basePopularity: {
                             $add: [
-                                { $size: { $ifNull: ["$likes", []] } },
-                                { $multiply: [{ $size: { $ifNull: ["$comments", []] } }, 2] }
+                                { $size: { $ifNull: ['$likes', []] } },
+                                { $multiply: [{ $size: { $ifNull: ['$comments', []] } }, 2] }
                             ]
                         },
-
-                        // 2. Personalization - check if current user follows the author
                         isFollowingAuthor: req.user ? {
                             $in: [
                                 new mongoose.Types.ObjectId(req.user._id),
-                                { $ifNull: ["$authorDetails.followers", []] }
+                                { $ifNull: ['$authorDetails.followers', []] }
                             ]
                         } : false,
-
-                        // 3. Time decay - hours since post was created
                         hoursOld: {
                             $divide: [
-                                { $subtract: [new Date(), "$createdAt"] },
-                                1000 * 60 * 60
+                                { $subtract: [new Date(), '$createdAt'] },
+                                3_600_000 // ms per hour
                             ]
                         },
-
                         author: {
                             _id: '$authorDetails._id',
                             username: '$authorDetails.username',
@@ -124,121 +121,99 @@ const getPosts = async (req, res) => {
                 },
                 {
                     $addFields: {
-                        // 4. Algorithm Score Formula:
-                        // (Base Popularity) + (Follower Boost: +50) - (Decay: 0.5 per hour)
-                        // Ensures posts from friends float to top, but huge viral posts can still compete
                         algoScore: {
                             $subtract: [
                                 {
                                     $add: [
-                                        "$basePopularity",
-                                        { $cond: ["$isFollowingAuthor", 50, 0] }
+                                        '$basePopularity',
+                                        { $cond: ['$isFollowingAuthor', 50, 0] }
                                     ]
                                 },
-                                { $multiply: ["$hoursOld", 0.5] }
+                                { $multiply: ['$hoursOld', 0.5] }
                             ]
                         }
                     }
                 },
                 { $sort: { algoScore: -1, createdAt: -1 } },
                 { $skip: skip },
-                { $limit: limit }
+                { $limit: limit },
+                { $project: { authorDetails: 0, basePopularity: 0, isFollowingAuthor: 0, hoursOld: 0, algoScore: 0 } }
+            ];
+
+            postsPromise = Post.aggregate(pipeline).then(posts =>
+                Post.populate(posts, {
+                    path: 'comments',
+                    populate: { path: 'user', select: 'username profilePic' }
+                })
             );
 
-            posts = await Post.aggregate(pipeline);
-            posts = await Post.populate(posts, {
-                path: 'comments',
-                populate: {
-                    path: 'user',
-                    select: 'username profilePic'
-                }
-            });
+            // ── TEXT SEARCH ─────────────────────────────────────────────────────
         } else if (search) {
-            // High-Performance Text Search using MongoDB Text Index
-            posts = await Post.find({
+            postsPromise = Post.find({
                 $text: { $search: search },
                 isArchived: archived === 'true'
             })
                 .select('title content image hashtags author createdAt likes comments')
                 .populate('author', 'username profilePic')
-                .populate({
-                    path: 'comments',
-                    populate: {
-                        path: 'user',
-                        select: 'username profilePic'
-                    }
-                })
+                .populate({ path: 'comments', populate: { path: 'user', select: 'username profilePic' } })
                 .sort({ score: { $meta: 'textScore' } })
                 .skip(skip)
                 .limit(limit)
                 .lean();
+
+            // ── AUTHOR FILTER ────────────────────────────────────────────────────
         } else {
-            // Standard deterministic queries with optimization
-            posts = await Post.find(matchStage)
+            postsPromise = Post.find(matchStage)
                 .select('title content image hashtags author createdAt likes comments')
                 .populate('author', 'username profilePic')
-                .populate({
-                    path: 'comments',
-                    populate: {
-                        path: 'user',
-                        select: 'username profilePic'
-                    }
-                })
+                .populate({ path: 'comments', populate: { path: 'user', select: 'username profilePic' } })
                 .sort({ createdAt: -1 })
                 .skip(skip)
                 .limit(limit)
                 .lean();
         }
 
-        // Calculate total for metadata
-        const totalPosts = await Post.countDocuments(matchStage);
+        // ── Await BOTH in parallel ──────────────────────────────────────────
+        const [posts, totalPosts] = await Promise.all([postsPromise, countPromise]);
+
         const totalPages = Math.ceil(totalPosts / limit);
 
-        res.status(200).json({
+        return res.status(200).json({
             posts,
             totalPosts,
             totalPages,
             currentPage: page,
             hasMore: page < totalPages
         });
+
     } catch (error) {
         console.error('Error in getPosts:', error);
         res.status(500).json({ message: error.message });
     }
 };
 
-// @desc    Get single post
-// @route   GET /api/posts/:id
-// @access  Public
+// ─── GET /api/posts/:id ────────────────────────────────────────────────────────
 const getPost = async (req, res) => {
     try {
         const post = await Post.findById(req.params.id)
             .populate('author', 'username profilePic bio pronouns socialLinks')
             .populate({
                 path: 'comments',
-                populate: {
-                    path: 'user',
-                    select: 'username profilePic bio'
-                }
+                populate: { path: 'user', select: 'username profilePic bio' }
             })
             .lean();
 
-        if (!post) {
-            return res.status(404).json({ message: 'Post not found' });
-        }
+        if (!post) return res.status(404).json({ message: 'Post not found' });
         res.status(200).json(post);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
 };
 
-// @desc    Create new post
-// @route   POST /api/posts
-// @access  Private
+// ─── POST /api/posts ───────────────────────────────────────────────────────────
 const createPost = async (req, res) => {
     try {
         const { title, content, image, hashtags } = req.body;
-
         if (!title || !content) {
             return res.status(400).json({ message: 'Please add all fields' });
         }
@@ -251,12 +226,13 @@ const createPost = async (req, res) => {
             hashtags: Array.isArray(hashtags) ? hashtags : []
         });
 
-        const fullPost = await Post.findById(post._id).populate('author', 'username profilePic');
+        const fullPost = await Post.findById(post._id)
+            .populate('author', 'username profilePic')
+            .lean();
 
-        // Extract mentions asynchronously without blocking UI return
         processMentions(req, content, post._id).catch(console.error);
 
-        // Invalidate feeds
+        // Invalidate feed caches for everyone (posts list) and this author's profile
         invalidateCache('api/posts');
         invalidateCache(req.user.id);
 
@@ -266,17 +242,11 @@ const createPost = async (req, res) => {
     }
 };
 
-// @desc    Update post
-// @route   PUT /api/posts/:id
-// @access  Private
+// ─── PUT /api/posts/:id ────────────────────────────────────────────────────────
 const updatePost = async (req, res) => {
     try {
         const post = await Post.findById(req.params.id);
-
-        if (!post) {
-            return res.status(404).json({ message: 'Post not found' });
-        }
-
+        if (!post) return res.status(404).json({ message: 'Post not found' });
         if (post.author.toString() !== req.user.id) {
             return res.status(401).json({ message: 'User not authorized' });
         }
@@ -284,9 +254,8 @@ const updatePost = async (req, res) => {
         const updatedPost = await Post.findByIdAndUpdate(req.params.id, req.body, {
             new: true,
             runValidators: true
-        }).populate('author', 'username profilePic');
+        }).populate('author', 'username profilePic').lean();
 
-        // Invalidate specific post and general feeds
         invalidateCache(req.params.id);
         invalidateCache('api/posts');
 
@@ -296,27 +265,20 @@ const updatePost = async (req, res) => {
     }
 };
 
-// @desc    Delete post
-// @route   DELETE /api/posts/:id
-// @access  Private
+// ─── DELETE /api/posts/:id ─────────────────────────────────────────────────────
 const deletePost = async (req, res) => {
     try {
         const post = await Post.findById(req.params.id);
-
-        if (!post) {
-            return res.status(404).json({ message: 'Post not found' });
-        }
-
+        if (!post) return res.status(404).json({ message: 'Post not found' });
         if (post.author.toString() !== req.user.id) {
             return res.status(401).json({ message: 'User not authorized' });
         }
 
         await post.deleteOne();
 
-        // Invalidate
-        invalidateCache('api/posts'); // Invalidate general feed
-        invalidateCache(`api/posts?authorId=${req.user.id}`); // Invalidate user's own posts cache
-        invalidateCache(`api/posts/${req.params.id}`); // Invalidate the specific post cache
+        invalidateCache('api/posts');
+        invalidateCache(`api/posts/${req.params.id}`);
+        invalidateCache(req.user.id); // user's profile feed cache
 
         res.status(200).json({ message: 'Post removed' });
     } catch (error) {
@@ -324,84 +286,72 @@ const deletePost = async (req, res) => {
     }
 };
 
-// @desc    Like a post
-// @route   PUT /api/posts/:id/like
-// @access  Private
+// ─── PUT /api/posts/:id/like ───────────────────────────────────────────────────
 const likePost = async (req, res) => {
     try {
-        const post = await Post.findById(req.params.id);
+        const post = await Post.findById(req.params.id).select('author likes');
+        if (!post) return res.status(404).json({ message: 'Post not found' });
 
-        if (!post) {
-            return res.status(404).json({ message: 'Post not found' });
-        }
+        // Atomic idempotent update — no separate read after write needed
+        const updated = await Post.findByIdAndUpdate(
+            req.params.id,
+            { $addToSet: { likes: req.user.id } },
+            { new: true, select: 'likes' }
+        );
 
-        // Idempotent add using $addToSet
-        await post.updateOne({ $addToSet: { likes: req.user.id } });
+        // Invalidate only the specific post cache (not entire feed for performance)
+        invalidateCache(`api/posts/${req.params.id}`);
+        invalidateCache('api/posts');
 
-        // Invalidate
-        invalidateCache('api/posts'); // Invalidate general feed
-        invalidateCache(`api/posts/${req.params.id}`); // Invalidate the specific post cache
-
-        // ------------- Notify Author ------------------
         sendNotification(req, {
             recipientId: post.author,
             type: 'like',
             post: post._id
         }).catch(err => console.error('[Notification Error]', err.message));
-        // -----------------------------------------------------------------
 
-        // Fetch updated likes for the response
-        const updatedPost = await Post.findById(req.params.id).select('likes');
-        res.status(200).json(updatedPost.likes);
+        res.status(200).json(updated.likes);
     } catch (error) {
         console.error('[Like Error]', error);
         res.status(500).json({ message: 'Server Error while liking post' });
     }
 };
 
-// @desc    Unlike a post
-// @route   PUT /api/posts/:id/unlike
-// @access  Private
+// ─── PUT /api/posts/:id/unlike ─────────────────────────────────────────────────
 const unlikePost = async (req, res) => {
     try {
-        const post = await Post.findById(req.params.id);
+        const post = await Post.findById(req.params.id).select('likes');
+        if (!post) return res.status(404).json({ message: 'Post not found' });
 
-        if (!post) {
-            return res.status(404).json({ message: 'Post not found' });
-        }
+        const updated = await Post.findByIdAndUpdate(
+            req.params.id,
+            { $pull: { likes: req.user.id } },
+            { new: true, select: 'likes' }
+        );
 
-        // Idempotent remove using $pull
-        await post.updateOne({ $pull: { likes: req.user.id } });
+        invalidateCache(`api/posts/${req.params.id}`);
+        invalidateCache('api/posts');
 
-        // Invalidate
-        invalidateCache('api/posts'); // Invalidate general feed
-        invalidateCache(`api/posts/${req.params.id}`); // Invalidate the specific post cache
-
-        const updatedPost = await Post.findById(req.params.id).select('likes');
-        res.status(200).json(updatedPost.likes);
+        res.status(200).json(updated.likes);
     } catch (error) {
         console.error('[Unlike Error]', error);
         res.status(500).json({ message: 'Server Error while unliking post' });
     }
 };
 
+// ─── GET /api/posts/bookmarks ──────────────────────────────────────────────────
 const getBookmarkedPosts = async (req, res) => {
     try {
         const user = await User.findById(req.user.id).select('bookmarks').lean();
-        if (!user) {
-            return res.status(404).json({ message: 'User not found' });
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+        if (!user.bookmarks || user.bookmarks.length === 0) {
+            return res.status(200).json({ posts: [] });
         }
 
         const posts = await Post.find({ _id: { $in: user.bookmarks } })
             .select('title content image hashtags author createdAt likes comments isArchived')
             .populate('author', 'username profilePic')
-            .populate({
-                path: 'comments',
-                populate: {
-                    path: 'user',
-                    select: 'username profilePic'
-                }
-            })
+            .populate({ path: 'comments', populate: { path: 'user', select: 'username profilePic' } })
             .sort({ createdAt: -1 })
             .lean();
 
@@ -412,31 +362,46 @@ const getBookmarkedPosts = async (req, res) => {
     }
 };
 
+// ─── GET /api/posts/user/:userId ───────────────────────────────────────────────
+// Now supports pagination: ?page=1&limit=10
 const getUserPosts = async (req, res) => {
     try {
         const { userId } = req.params;
-
         if (!mongoose.Types.ObjectId.isValid(userId)) {
             return res.status(400).json({ message: 'Invalid user ID' });
         }
 
-        const posts = await Post.find({
+        const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+        const limit = Math.min(20, parseInt(req.query.limit, 10) || 10);
+        const skip = (page - 1) * limit;
+
+        const query = {
             author: new mongoose.Types.ObjectId(userId),
             isArchived: false
-        })
-            .select('title content image hashtags author createdAt likes comments')
-            .populate('author', 'username profilePic')
-            .populate({
-                path: 'comments',
-                populate: {
-                    path: 'user',
-                    select: 'username profilePic'
-                }
-            })
-            .sort({ createdAt: -1 })
-            .lean();
+        };
 
-        res.status(200).json({ posts });
+        // Run count + fetch in parallel
+        const [posts, totalPosts] = await Promise.all([
+            Post.find(query)
+                .select('title content image hashtags author createdAt likes comments')
+                .populate('author', 'username profilePic')
+                .populate({ path: 'comments', populate: { path: 'user', select: 'username profilePic' } })
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit)
+                .lean(),
+            Post.countDocuments(query)
+        ]);
+
+        const totalPages = Math.ceil(totalPosts / limit);
+
+        res.status(200).json({
+            posts,
+            totalPosts,
+            totalPages,
+            currentPage: page,
+            hasMore: page < totalPages
+        });
     } catch (error) {
         console.error('Error in getUserPosts:', error);
         res.status(500).json({ message: error.message });

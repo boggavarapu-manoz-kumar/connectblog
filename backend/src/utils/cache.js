@@ -1,68 +1,76 @@
 const NodeCache = require('node-cache');
 
-// Create a new cache instance
+/**
+ * ──────────────────────────────────────────────
+ *  ConnectBlog — Tiered In-Memory Cache
+ *
+ *  TTL tiers (seconds):
+ *    SHORT   30s  – feed (changes often)
+ *    MEDIUM  120s – single post / user profile
+ *    LONG    600s – explore / trending (rarely changes)
+ *
+ *  Key format:
+ *    __express__{userId | 'public'}__{originalUrl}
+ * ──────────────────────────────────────────────
+ */
 const cache = new NodeCache({
-    stdTTL: 300,
-    checkperiod: 600,
-    useClones: false
+    stdTTL: 120,      // default 2 min
+    checkperiod: 300, // prune expired every 5 min (was 600 – too slow)
+    useClones: false  // avoid JSON clone overhead on read
 });
 
-/**
- * Middleware for caching GET requests
- * Handles personalization by adding userId to the cache key if present
- */
+// ─── Middleware ────────────────────────────────────────────────────────────────
 const cacheMiddleware = (duration) => (req, res, next) => {
-    // Only cache GET requests
-    if (req.method !== 'GET') {
-        return next();
-    }
+    if (req.method !== 'GET') return next();
 
-    // Create a unique key based on URL and User ID (for personalization)
     const userId = req.user ? req.user.id : 'public';
     const key = `__express__${userId}__${req.originalUrl || req.url}`;
 
-    const cachedResponse = cache.get(key);
+    const hit = cache.get(key);
+    if (hit !== undefined) {
+        res.setHeader('X-Cache', 'HIT');
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        return res.end(typeof hit === 'string' ? hit : JSON.stringify(hit));
+    }
 
-    if (cachedResponse) {
-        // Set a header to indicate cache hit
-        res.set('X-Cache', 'HIT');
-        try {
-            // If it's an object, stringify it
-            const body = typeof cachedResponse === 'string' ? cachedResponse : JSON.stringify(cachedResponse);
-            return res.send(body);
-        } catch (e) {
-            return res.send(cachedResponse);
+    res.setHeader('X-Cache', 'MISS');
+
+    // Intercept res.json so we cache the serialised body once
+    const _json = res.json.bind(res);
+    res.json = (body) => {
+        if (res.statusCode === 200) {
+            // Store as string to avoid re-serialisation cost on cache hits
+            cache.set(key, JSON.stringify(body), duration);
         }
-    } else {
-        res.set('X-Cache', 'MISS');
-        // Store the original send function
-        const originalSend = res.send.bind(res);
+        return _json(body);
+    };
 
-        res.send = (body) => {
-            // Only cache successful JSON responses
-            if (res.statusCode === 200) {
-                cache.set(key, body, duration);
-            }
-            return originalSend(body);
-        };
-        next();
+    next();
+};
+
+// ─── Invalidation ─────────────────────────────────────────────────────────────
+/**
+ * Invalidate all cache entries whose key contains the given pattern.
+ * @param {string} pattern  a substring to match (userId, 'api/posts', postId…)
+ */
+const invalidateCache = (pattern) => {
+    if (!pattern) return;
+    const keys = cache.keys();
+    const toDelete = keys.filter(k => k.includes(pattern));
+    if (toDelete.length > 0) {
+        cache.del(toDelete);
     }
 };
 
 /**
- * Invalidate specific cache patterns
- * example: invalidateCache('profile') or invalidateCache(req.user.id)
+ * Wipe the entire in-memory cache.
+ * Use sparingly – only after bulk operations.
  */
-const invalidateCache = (pattern) => {
-    const keys = cache.keys();
-    const keysToDelete = keys.filter(key => key.includes(pattern));
-    if (keysToDelete.length > 0) {
-        cache.del(keysToDelete);
-    }
-};
+const flushCache = () => cache.flushAll();
 
 module.exports = {
     cache,
     cacheMiddleware,
-    invalidateCache
+    invalidateCache,
+    flushCache
 };

@@ -21,15 +21,15 @@ import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persist
 const queryClient = new QueryClient({
     defaultOptions: {
         queries: {
-            // 1 min default staleTime — individual queries override this
-            staleTime: 1000 * 60 * 1,
-            // Keep unused data in memory for 24h (for fast back-navigation)
+            // 2 min default staleTime — individual queries override as needed
+            staleTime: 1000 * 60 * 2,
+            // Keep unused data in memory for 24h (fast back-navigation without re-fetch)
             gcTime: 1000 * 60 * 60 * 24,
-            // Refetch when user comes back to the tab (real-time feel)
-            refetchOnWindowFocus: true,
-            // Always refetch when component mounts (nav back = fresh data)
+            // Don't re-fetch just because the user switched tabs — reduces cold hits on Render
+            refetchOnWindowFocus: false,
+            // Refetch when component mounts so navigating back gives fresh data
             refetchOnMount: true,
-            retry: 2,
+            retry: 1, // was 2 — one retry is enough; 2 retries adds 2x latency on cold start
         },
     },
 });

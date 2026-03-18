@@ -5,9 +5,8 @@ services:
     plan: free
     repo: https://github.com/boggavarapu-manoz-kumar/connectblog # Adjust if repo changes
     branch: main
-    rootDir: backend
     buildCommand: cd backend && npm install
-    startCommand: npm start
+    startCommand: cd backend && npm start
     envVars:
       - key: NODE_ENV
         value: production

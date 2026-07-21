@@ -36,7 +36,8 @@ const registerUser = asyncHandler(async (req, res) => {
                 profilePic: user.profilePic,
                 role: user.role,
                 followerCount: user.followerCount || 0,
-                followingCount: user.followingCount || 0
+                followingCount: user.followingCount || 0,
+                token: token
             });
         } else {
             res.status(400).json({ message: 'Invalid user data' });
@@ -67,7 +68,8 @@ const loginUser = asyncHandler(async (req, res) => {
                 profilePic: user.profilePic,
                 role: user.role,
                 followerCount: user.followerCount || 0,
-                followingCount: user.followingCount || 0
+                followingCount: user.followingCount || 0,
+                token: token
             });
         } else {
             res.status(401).json({ message: 'Invalid credentials' });

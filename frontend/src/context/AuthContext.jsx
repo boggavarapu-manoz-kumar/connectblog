@@ -24,8 +24,12 @@ export const AuthProvider = ({ children }) => {
             // Backend now uses HttpOnly cookies, so we just make the request.
             // If the cookie is present and valid, this succeeds.
             const { data } = await api.get('/auth/me');
-            setUser(data);
-            localStorage.setItem('user', JSON.stringify(data));
+            // Preserve the token that was originally issued at login
+            const tokenToKeep = savedUser ? JSON.parse(savedUser).token : null;
+            const finalData = tokenToKeep ? { ...data, token: tokenToKeep } : data;
+            
+            setUser(finalData);
+            localStorage.setItem('user', JSON.stringify(finalData));
         } catch (error) {
             console.log('User check failed (Not logged in)');
             localStorage.removeItem('user');

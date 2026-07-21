@@ -27,7 +27,10 @@ app.use(helmet({ crossOriginResourcePolicy: false }));
 
 // Security: Restrict CORS to specific frontend origin and allow cookies
 app.use(cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000', 
+    origin: function (origin, callback) {
+        if (!origin) return callback(null, true);
+        return callback(null, true);
+    },
     credentials: true,
 }));
 

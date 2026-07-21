@@ -13,6 +13,8 @@ const {
 } = require('../controllers/post.controller');
 const { protect, optionalProtect } = require('../middleware/auth.middleware');
 const { cacheMiddleware } = require('../utils/cache');
+const validate = require('../middleware/validate.middleware');
+const { createPostSchema, updatePostSchema } = require('../validations/post.validation');
 
 // ─── Comment sub-router ───────────────────────────────────────────────────────
 const commentRouter = require('./comment.routes');
@@ -28,7 +30,7 @@ router.use('/:postId/comments', commentRouter);
 
 router.route('/')
     .get(optionalProtect, cacheMiddleware(60), getPosts)   // Main feed — 60 s
-    .post(protect, createPost);
+    .post(protect, validate(createPostSchema), createPost);
 
 router.route('/bookmarks')
     .get(protect, cacheMiddleware(30), getBookmarkedPosts); // Private — 30 s
@@ -38,7 +40,7 @@ router.route('/user/:userId')
 
 router.route('/:id')
     .get(cacheMiddleware(180), getPost)                    // Single post — 180 s
-    .put(protect, updatePost)
+    .put(protect, validate(updatePostSchema), updatePost)
     .delete(protect, deletePost);
 
 router.route('/:id/like').put(protect, likePost);

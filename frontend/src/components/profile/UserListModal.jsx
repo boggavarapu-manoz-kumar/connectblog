@@ -9,8 +9,7 @@ const UserListItem = ({ user, onClose }) => {
     const { user: currentUser, updateUser } = useAuth();
     const queryClient = useQueryClient();
 
-    // Check if current user is following this user
-    const isFollowing = currentUser?.following?.includes(user._id);
+    const isFollowing = user?.isFollowing;
     const isMe = currentUser?._id === user._id;
 
     const followMutation = useMutation({
@@ -20,17 +19,12 @@ const UserListItem = ({ user, onClose }) => {
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['profile'] });
-
-            // Update AuthContext following list
-            if (currentUser) {
-                const newFollowing = isFollowing
-                    ? currentUser.following.filter(id => id !== user._id)
-                    : [...(currentUser.following || []), user._id];
-
-                const updatedUser = { ...currentUser, following: newFollowing };
-                updateUser(updatedUser);
-                localStorage.setItem('user', JSON.stringify(updatedUser));
-            }
+            queryClient.invalidateQueries({ queryKey: ['followers'] });
+            queryClient.invalidateQueries({ queryKey: ['following'] });
+            
+            // We no longer manually update currentUser.following array here
+            // because the backend now returns follower/following counts 
+            // and isFollowing boolean dynamically.
         },
         onError: () => {
             toast.error("Action failed");

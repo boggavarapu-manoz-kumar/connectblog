@@ -7,9 +7,9 @@ const { Readable } = require('stream');
 
 // ─── Cloudinary Config ────────────────────────────────────────────────────────
 cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'dfqztov62',
-    api_key: process.env.CLOUDINARY_API_KEY || '178619623668134',
-    api_secret: process.env.CLOUDINARY_API_SECRET || 'gqF7D2hF27q7t4d5PZ1Gz_p2nWY'
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
 // ─── Multer — memory storage (no disk write, no temp files) ───────────────────
@@ -51,6 +51,8 @@ const uploadToCloudinary = (buffer, mimetype) => {
     });
 };
 
+const { saveToLocal } = require('../utils/storage');
+
 // ─── POST /api/upload ──────────────────────────────────────────────────────────
 // Protected — only logged-in users can upload
 router.post('/', protect, upload.single('image'), async (req, res) => {
@@ -59,23 +61,26 @@ router.post('/', protect, upload.single('image'), async (req, res) => {
             return res.status(400).json({ message: 'No image provided' });
         }
 
-        // Upload to Cloudinary — fast CDN, automatic optimisation, no 3rd-party downtime
-        const result = await uploadToCloudinary(req.file.buffer, req.file.mimetype);
+        try {
+            // Only use Cloudinary. If it fails, fail securely.
+            const result = await uploadToCloudinary(req.file.buffer, req.file.mimetype);
+            const url = result.secure_url;
+            console.log('✅ Uploaded to Cloudinary');
 
-        // Return the CDN-optimised URL
-        return res.status(200).json({
-            url: result.secure_url,        // HTTPS CDN URL
-            publicId: result.public_id,          // For future deletion if needed
-            width: result.width,
-            height: result.height,
-            format: result.format,
-            bytes: result.bytes
-        });
+            return res.status(200).json({
+                url: url,
+                success: true
+            });
 
+        } catch (cloudinaryError) {
+            console.error('[Cloudinary Error]', cloudinaryError.message);
+            return res.status(502).json({ message: 'Image upload provider failed. Please try again later.' });
+        }
     } catch (error) {
         console.error('[Upload Error]', error.message);
         res.status(500).json({ message: 'Image upload failed. Please try again.' });
     }
 });
+
 
 module.exports = router;

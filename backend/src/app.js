@@ -5,13 +5,19 @@ const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
 const compression = require('compression');
 const path = require('path');
+const mongoSanitize = require('express-mongo-sanitize');
+const rateLimit = require('express-rate-limit');
 
 const app = express();
 app.use(compression());
 
 // Middleware
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true, parameterLimit: 50000 }));
+// Security: Limit JSON payload to 1MB to prevent DoS attacks
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ limit: '1mb', extended: true }));
+
+// Security: Prevent NoSQL Injection
+app.use(mongoSanitize());
 
 // Static files
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
@@ -19,11 +25,26 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 // Security and Logging
 app.use(helmet({ crossOriginResourcePolicy: false }));
 
-// Simplified CORS for reliable production connection
+// Security: Restrict CORS to specific frontend origin and allow cookies
 app.use(cors({
-    origin: '*', 
+    origin: process.env.FRONTEND_URL || 'http://localhost:3000', 
     credentials: true,
 }));
+
+// Security: Rate limiting
+const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 1000, // limit each IP to 1000 requests per windowMs
+    message: { message: 'Too many requests from this IP, please try again later.' }
+});
+app.use('/api/', apiLimiter);
+
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 100, // relaxed limit for development
+    message: { message: 'Too many authentication attempts, please try again later.' }
+});
+app.use('/api/auth/', authLimiter);
 
 app.use(morgan('dev'));
 app.use(cookieParser());
@@ -51,10 +72,9 @@ app.get('/api/health', (req, res) => {
     });
 });
 
-// Error Handling Middleware
-app.use((err, req, res, next) => {
-    console.error(err.stack);
-    res.status(500).json({ message: 'Internal Server Error' });
-});
+const { errorHandler, notFound } = require('./middleware/error.middleware');
+
+app.use(notFound);
+app.use(errorHandler);
 
 module.exports = app;

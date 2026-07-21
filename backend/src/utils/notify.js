@@ -17,12 +17,13 @@ const sendNotification = async (req, { recipientId, type, post = null }) => {
         const io = req.app.get('io');
         const userSockets = req.app.get('userSockets');
         if (io && userSockets) {
-            const socketId = userSockets.get(recipientId.toString());
-            if (socketId) {
-                // Emit event
-                io.to(socketId).emit('newNotification', {
-                    type,
-                    from: req.user.username
+            const sockets = userSockets.get(recipientId.toString());
+            if (sockets && sockets.size > 0) {
+                sockets.forEach(socketId => {
+                    io.to(socketId).emit('newNotification', {
+                        type,
+                        from: req.user.username
+                    });
                 });
             }
         }

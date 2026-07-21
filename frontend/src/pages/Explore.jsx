@@ -59,6 +59,7 @@ const Explore = () => {
                             {hasImage ? (
                                 <div className="relative w-full h-auto overflow-hidden">
                                     <img
+                                        loading="lazy"
                                         src={post.image}
                                         alt={post.title}
                                         className="w-full h-auto object-cover transition-transform duration-700 group-hover:scale-110"
@@ -70,6 +71,7 @@ const Explore = () => {
                                         </h3>
                                         <div className="flex items-center gap-2 mt-3">
                                             <img
+                                                loading="lazy"
                                                 src={post.author.profilePic || `https://ui-avatars.com/api/?name=${encodeURIComponent(post.author.username)}&background=0ea5e9&color=fff&bold=true`}
                                                 className="w-7 h-7 rounded-full object-cover border-2 border-white/80 shadow-sm"
                                                 alt={post.author.username}
@@ -103,6 +105,7 @@ const Explore = () => {
                                     <div className="mt-6 pt-5 border-t border-gray-100 flex items-center justify-between">
                                         <div className="flex items-center gap-3">
                                             <img
+                                                loading="lazy"
                                                 src={post.author.profilePic || `https://ui-avatars.com/api/?name=${encodeURIComponent(post.author.username)}&background=0ea5e9&color=fff&bold=true`}
                                                 className="w-8 h-8 rounded-full object-cover shadow-sm"
                                                 alt={post.author.username}

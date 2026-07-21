@@ -5,6 +5,9 @@ import api from '../services/api';
 import PostCard from '../components/post/PostCard';
 import { Loader2, SearchX, ArrowLeft, User as UserIcon } from 'lucide-react';
 import SearchHero from '../components/common/SearchHero';
+import SkeletonPost from '../components/common/SkeletonPost';
+import { formatImageUrl } from '../utils/formatUrl';
+
 
 const Home = () => {
     const navigate = useNavigate();
@@ -76,9 +79,10 @@ const Home = () => {
 
             <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
                 {status === 'pending' ? (
-                    <div className="flex flex-col items-center justify-center py-32">
-                        <Loader2 className="w-12 h-12 text-primary-600 animate-spin mb-6" />
-                        <p className="text-gray-500 font-bold text-lg animate-pulse">Fetching the best stories...</p>
+                    <div className="flex flex-col space-y-4">
+                        <SkeletonPost />
+                        <SkeletonPost />
+                        <SkeletonPost />
                     </div>
                 ) : status === 'error' ? (
                     <div className="py-20 flex flex-col items-center justify-center bg-gray-50 px-4 rounded-3xl border border-gray-100 italic">
@@ -126,7 +130,8 @@ const Home = () => {
                                                     className="flex flex-col items-center flex-shrink-0 w-24 group"
                                                 >
                                                     <img
-                                                        src={user.profilePic || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.username)}&background=efefef&color=333&bold=true`}
+                                                        loading="lazy"
+                                                        src={formatImageUrl(user.profilePic)}
                                                         alt={user.username}
                                                         className="w-16 h-16 rounded-full object-cover border-2 border-transparent group-hover:border-primary-500 transition-all shadow-sm mb-2"
                                                         onError={(e) => {
@@ -134,6 +139,7 @@ const Home = () => {
                                                             e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.username)}&background=efefef&color=333&bold=true`;
                                                         }}
                                                     />
+
                                                     <span className="text-sm font-semibold text-gray-900 truncate w-full text-center group-hover:text-primary-600 transition-colors">
                                                         {user.username}
                                                     </span>

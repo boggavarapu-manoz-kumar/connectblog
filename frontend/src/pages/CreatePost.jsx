@@ -8,6 +8,8 @@ import { Image, Send, X } from 'lucide-react';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 import imageCompression from 'browser-image-compression';
+import { formatImageUrl } from '../utils/formatUrl';
+
 
 const CreatePost = () => {
     const { user } = useAuth();
@@ -181,7 +183,9 @@ const CreatePost = () => {
 
                         {imageUrl && (
                             <div className="mt-4 relative rounded-xl overflow-hidden border-2 border-gray-100 shadow-sm">
-                                <img src={imageUrl} alt="Preview" className="w-full h-64 object-cover" />
+                                <img src={formatImageUrl(imageUrl)} alt="Preview" className="w-full h-64 object-cover" />
+
+
                                 <button
                                     type="button"
                                     onClick={() => setImageUrl('')}

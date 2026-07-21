@@ -18,4 +18,30 @@
   .font-blog {
     font-family: 'Playfair Display', serif;
   }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-gray-200 rounded-full hover:bg-gray-300 transition-colors;
+  }
+
+  /* Smooth Heart Animation */
+  .heart-pop {
+    animation: heartPop 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+
+  @keyframes heartPop {
+    0% { transform: scale(1); }
+    25% { transform: scale(1.3) rotate(-15deg); }
+    50% { transform: scale(1) rotate(0deg); }
+    75% { transform: scale(1.2) rotate(15deg); }
+    100% { transform: scale(1) rotate(0deg); }
+  }
 }

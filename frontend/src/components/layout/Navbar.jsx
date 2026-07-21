@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import SearchBar from './SearchBar';
 import { useSocket } from '../../context/SocketContext';
+import { formatImageUrl } from '../../utils/formatUrl';
+
 
 const Navbar = () => {
     const { user, logout } = useAuth();
@@ -103,14 +105,16 @@ const Navbar = () => {
                                     >
                                         <div className="relative">
                                             <img
-                                                src={userAvatar}
-                                                alt={user.username}
+                                                src={formatImageUrl(user?.profilePic)}
+                                                alt={user?.username || 'User'}
                                                 className="h-9 w-9 rounded-full object-cover border-2 border-transparent group-hover:border-primary-500 transition-all shadow-sm"
                                                 onError={(e) => {
                                                     e.target.onerror = null;
-                                                    e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.username)}&background=0ea5e9&color=fff&bold=true`;
+                                                    const initials = (user?.username || 'U').charAt(0).toUpperCase();
+                                                    e.target.src = `https://ui-avatars.com/api/?name=${initials}&background=0ea5e9&color=fff&bold=true`;
                                                 }}
                                             />
+
                                             <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-white rounded-full shadow-sm"></div>
                                         </div>
                                         <ChevronDown size={14} className={`text-gray-400 transition-transform duration-300 ${isMenuOpen ? 'rotate-180' : ''}`} />

@@ -54,18 +54,14 @@ const userSchema = new mongoose.Schema({
         enum: ['user', 'admin'],
         default: 'user'
     },
-    followers: [{
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User'
-    }],
-    following: [{
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User'
-    }],
-    bookmarks: [{
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Post'
-    }],
+    followerCount: {
+        type: Number,
+        default: 0
+    },
+    followingCount: {
+        type: Number,
+        default: 0
+    },
     coins: {
         type: Number,
         default: 0
@@ -90,8 +86,6 @@ userSchema.methods.matchPassword = async function (enteredPassword) {
     return await bcrypt.compare(enteredPassword, this.password);
 };
 
-// Indexing for faster lookups
-userSchema.index({ username: 1 });
-userSchema.index({ email: 1 });
 
 module.exports = mongoose.model('User', userSchema);
+

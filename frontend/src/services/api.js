@@ -1,4 +1,5 @@
 import axios from 'axios';
+import toast from 'react-hot-toast';
 
 // In production (AWS Amplify), VITE_API_URL = your App Runner backend URL
 // In local dev, it falls back to '/api' (handled by Vite proxy)
@@ -9,18 +10,28 @@ const api = axios.create({
     headers: {
         'Content-Type': 'application/json',
     },
+    withCredentials: true,
 });
 
-// Add a request interceptor to add the auth token to headers
-api.interceptors.request.use(
-    (config) => {
-        const token = localStorage.getItem('token');
-        if (token) {
-            config.headers.Authorization = `Bearer ${token}`;
+api.interceptors.response.use(
+    (response) => response,
+    (error) => {
+        // If we get a 401 Unauthorized from any endpoint OTHER than /auth/me or /auth/login
+        if (error.response?.status === 401) {
+            const isAuthEndpoint = error.config?.url?.includes('/auth/me') || error.config?.url?.includes('/auth/login');
+            
+            if (!isAuthEndpoint) {
+                // Clear any stale local user state just in case
+                localStorage.removeItem('user');
+                
+                toast.error("Please login to perform this action.");
+                
+                // Trigger smooth React Router redirect instead of hard reload
+                window.dispatchEvent(new CustomEvent('unauthorized'));
+            }
         }
-        return config;
-    },
-    (error) => Promise.reject(error)
+        return Promise.reject(error);
+    }
 );
 
 export default api;

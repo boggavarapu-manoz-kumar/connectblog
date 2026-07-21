@@ -11,8 +11,14 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=5000
-      - MONGO_URI=${MONGO_URI}
-      - JWT_SECRET=${JWT_SECRET}
+      - MONGO_URI=${MONGO_URI:-mongodb://mongo:27017/connectblog}
+      - JWT_SECRET=${JWT_SECRET:-supersecretkey}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME}
+      - CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY}
+      - CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET}
+    depends_on:
+      - mongo
     restart: unless-stopped
 
   frontend:
@@ -25,3 +31,15 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
+
+  mongo:
+    image: mongo:6.0
+    container_name: connectblog-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - connectblog_data:/data/db
+    restart: unless-stopped
+
+volumes:
+  connectblog_data:

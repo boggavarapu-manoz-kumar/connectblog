@@ -3,35 +3,21 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
-import { ArrowLeft, Heart, MessageCircle, Share2, Loader2, MoreHorizontal, Edit, Trash2, Archive, EyeOff, Eye } from 'lucide-react';
+import { useToggleLike } from '../hooks/useToggleLike';
+import { ArrowLeft, Heart, MessageCircle, Share2, Loader2, MoreHorizontal, Edit, Trash2, Archive, EyeOff, Eye, Bookmark } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import toast from 'react-hot-toast';
+import { Helmet } from 'react-helmet-async';
+import { formatImageUrl } from '../utils/formatUrl';
 
 const PostDetail = () => {
     const { id } = useParams();
     const navigate = useNavigate();
-    const { user } = useAuth();
+    const { user, updateUser } = useAuth();
     const queryClient = useQueryClient();
 
     const [showMenu, setShowMenu] = useState(false);
     const [commentText, setCommentText] = useState('');
-
-    // Scroll States
-    const [scrollProgress, setScrollProgress] = useState(0);
-    const [showBackToTop, setShowBackToTop] = useState(false);
-
-    useEffect(() => {
-        const handleScroll = () => {
-            const totalHeight = document.documentElement.scrollHeight - window.innerHeight;
-            if (totalHeight > 0) {
-                const progress = (window.scrollY / totalHeight) * 100;
-                setScrollProgress(progress);
-            }
-            setShowBackToTop(window.scrollY > 400);
-        };
-        window.addEventListener('scroll', handleScroll);
-        return () => window.removeEventListener('scroll', handleScroll);
-    }, []);
 
     // Query: Post Data
     const { data: post, isLoading, error } = useQuery({
@@ -55,121 +41,132 @@ const PostDetail = () => {
     });
 
     // Like mutation
-    const likeMutation = useMutation({
-        mutationFn: async (isCurrentlyLiked) => {
-            const endpoint = isCurrentlyLiked ? `/posts/${id}/unlike` : `/posts/${id}/like`;
-            return api.put(endpoint);
+    const likeMutation = useToggleLike();
+
+    // Bookmark mutation
+    const isBookmarked = user?.bookmarks?.includes(id);
+    const bookmarkMutation = useMutation({
+        mutationFn: async () => {
+            return api.put(`/users/bookmarks/${id}`);
         },
-        onMutate: async (isCurrentlyLiked) => {
-            const userId = user?._id || user?.id;
-            if (!userId) return;
+        onMutate: async () => {
+            const previousUser = { ...user };
+            const newBookmarks = isBookmarked
+                ? user.bookmarks.filter(bId => bId !== id)
+                : [...(user.bookmarks || []), id];
 
-            // 1. Cancel all potentially conflicting queries
-            await Promise.all([
-                queryClient.cancelQueries({ queryKey: ['post', id] }),
-                queryClient.cancelQueries({ queryKey: ['posts-feed'] }),
-                queryClient.cancelQueries({ queryKey: ['profile-posts'] }),
-                queryClient.cancelQueries({ queryKey: ['profile-private'] })
-            ]);
+            updateUser({ ...user, bookmarks: newBookmarks });
+            return { previousUser };
+        },
+        onError: (err, variables, context) => {
+            updateUser(context.previousUser);
+            toast.error('Failed to save post');
+        }
+    });
 
-            // 2. Comprehensive Snapshots for rollback
-            const snapshots = {
-                singlePost: queryClient.getQueryData(['post', id]),
-                feeds: queryClient.getQueriesData({ queryKey: ['posts-feed'] }),
-                profilePosts: queryClient.getQueriesData({ queryKey: ['profile-posts'] }),
-                profilePrivate: queryClient.getQueriesData({ queryKey: ['profile-private'] })
+    // Comment Mutation (Fully Optimistic)
+    const commentMutation = useMutation({
+        mutationFn: async (text) => {
+            const { data } = await api.post(`/posts/${id}/comments`, { text });
+            return data;
+        },
+        onMutate: async (text) => {
+            const tempCommentId = Date.now().toString();
+            const tempComment = {
+                _id: tempCommentId,
+                text,
+                user: {
+                    _id: user?._id,
+                    username: user?.username,
+                    profilePic: user?.profilePic
+                },
+                createdAt: new Date().toISOString()
             };
 
-            const updatePostLikes = (p) => {
-                if (!p || (p._id !== id && id !== p.id)) return p;
-                const newLikes = isCurrentlyLiked
-                    ? (p.likes || []).filter(uid => uid.toString() !== userId.toString())
-                    : [...(p.likes || []), userId];
-                return { ...p, likes: newLikes };
-            };
+            await queryClient.cancelQueries({ queryKey: ['post-comments', id] });
+            const previousComments = queryClient.getQueryData(['post-comments', id]);
 
-            // Optimistic Update: SINGLE POST
-            queryClient.setQueryData(['post', id], old => {
-                if (!old) return old;
-                return updatePostLikes(old);
+            queryClient.setQueryData(['post-comments', id], old => {
+                const oldComments = Array.isArray(old) ? old : [];
+                return [tempComment, ...oldComments];
             });
 
-            // Optimistic Update: FEED
+            const updatePostComments = (p) => {
+                if (p._id !== id && p.id !== id) return p;
+                return { ...p, comments: [...(p.comments || []), tempComment] };
+            };
+
             queryClient.setQueriesData({ queryKey: ['posts-feed'] }, old => {
                 if (!old || !old.pages) return old;
                 return {
                     ...old,
                     pages: old.pages.map(page => ({
                         ...page,
-                        posts: page.posts?.map(updatePostLikes) || []
+                        posts: page.posts?.map(updatePostComments) || []
                     }))
                 };
             });
 
-            // Optimistic Update: PROFILE POSTS
             queryClient.setQueriesData({ queryKey: ['profile-posts'] }, old => {
                 if (!old || !old.posts) return old;
-                return { ...old, posts: old.posts.map(updatePostLikes) };
+                return { ...old, posts: old.posts.map(updatePostComments) };
             });
 
-            // Optimistic Update: PRIVATE DATA
-            queryClient.setQueriesData({ queryKey: ['profile-private'] }, old => {
-                if (!old) return old;
+            return { previousComments, tempCommentId };
+        },
+        onError: (err, newComment, context) => {
+            if (context?.previousComments) {
+                queryClient.setQueryData(['post-comments', id], context.previousComments);
+            }
+            queryClient.invalidateQueries({ queryKey: ['posts-feed'] });
+            queryClient.invalidateQueries({ queryKey: ['profile-posts'] });
+            toast.error('Failed to add comment');
+        },
+        onSuccess: (newComment, variables, context) => {
+            const tempCommentId = context?.tempCommentId;
+
+            queryClient.setQueryData(['post-comments', id], old => {
+                const oldComments = Array.isArray(old) ? old : [];
+                return oldComments.map(c => c._id === tempCommentId ? newComment : c);
+            });
+
+            const replaceComment = (p) => {
+                if (p._id !== id && p.id !== id) return p;
+                return {
+                    ...p,
+                    comments: (p.comments || []).map(c => 
+                        c._id === tempCommentId ? newComment : c
+                    )
+                };
+            };
+
+            queryClient.setQueriesData({ queryKey: ['posts-feed'] }, old => {
+                if (!old || !old.pages) return old;
                 return {
                     ...old,
-                    archived: old.archived?.map(updatePostLikes) || [],
-                    saved: old.saved?.map(updatePostLikes) || []
+                    pages: old.pages.map(page => ({
+                        ...page,
+                        posts: page.posts?.map(replaceComment) || []
+                    }))
                 };
             });
 
-            return { snapshots };
-        },
-        onError: (err, variables, context) => {
-            // Precise Rollback using snapshots
-            if (context?.snapshots?.singlePost) {
-                queryClient.setQueryData(['post', id], context.snapshots.singlePost);
-            }
-            if (context?.snapshots?.feeds) {
-                context.snapshots.feeds.forEach(([queryKey, data]) => {
-                    queryClient.setQueryData(queryKey, data);
-                });
-            }
-            if (context?.snapshots?.profilePosts) {
-                context.snapshots.profilePosts.forEach(([queryKey, data]) => {
-                    queryClient.setQueryData(queryKey, data);
-                });
-            }
-            toast.error("Sync failed");
-        },
-        onSettled: () => {
-            queryClient.invalidateQueries({ queryKey: ['post', id] });
-            queryClient.invalidateQueries({ queryKey: ['posts-feed'] });
-            queryClient.invalidateQueries({ queryKey: ['profile-posts'] });
-            queryClient.invalidateQueries({ queryKey: ['profile-private'] });
-        }
-    });
-
-    // Comment Mutation
-    const commentMutation = useMutation({
-        mutationFn: async (text) => {
-            const { data } = await api.post(`/posts/${id}/comments`, { text });
-            return data;
-        },
-        onSuccess: (newComment) => {
-            queryClient.setQueryData(['post-comments', id], old => {
-                const oldComments = Array.isArray(old) ? old : [];
-                return [newComment, ...oldComments];
+            queryClient.setQueriesData({ queryKey: ['profile-posts'] }, old => {
+                if (!old || !old.posts) return old;
+                return { ...old, posts: old.posts.map(replaceComment) };
             });
-            setCommentText(''); // Instant UI feedback
-            toast.success('Comment added!');
 
-            // Sync the comment count universally
+            queryClient.setQueryData(['post', id], old => {
+                if (!old) return old;
+                return replaceComment(old);
+            });
+
+            queryClient.invalidateQueries({ queryKey: ['post-comments', id] });
             queryClient.invalidateQueries({ queryKey: ['post', id] });
             queryClient.invalidateQueries({ queryKey: ['posts-feed'] });
             queryClient.invalidateQueries({ queryKey: ['profile-posts'] });
             queryClient.invalidateQueries({ queryKey: ['profile-private'] });
         },
-        onError: () => toast.error('Failed to add comment'),
     });
 
     const handleBack = () => {
@@ -179,7 +176,7 @@ const PostDetail = () => {
 
     if (isLoading) {
         return (
-            <div className="min-h-screen flex items-center justify-center bg-[#f3f2ef]">
+            <div className="min-h-screen flex items-center justify-center bg-[#f3f2ef] lg:bg-black">
                 <Loader2 className="w-10 h-10 text-primary-600 animate-spin" />
             </div>
         );
@@ -191,165 +188,218 @@ const PostDetail = () => {
         return null;
     }
 
-    const isAuthor = user?._id === (post.author?._id || post.author);
-    const isLiked = user && post.likes.includes(user._id);
-    const likesCount = post.likes.length;
+    const isAuthor = user?._id === (post?.author?._id || post?.author);
+    const isLiked = user && post?.likes?.includes(user._id);
+    const likesCount = post?.likes?.length || 0;
 
     return (
-        <div className="min-h-screen bg-[#f3f2ef] py-6 sm:py-8 font-sans">
-            <div className="fixed top-0 left-0 w-full h-1 z-[60] bg-gray-100">
-                <div className="h-full bg-primary-600 transition-all duration-150 ease-out shadow-[0_0_10px_rgba(14,165,233,0.5)]" style={{ width: `${scrollProgress}%` }} />
-            </div>
+        <div className="min-h-screen bg-[#f3f2ef] lg:bg-[#fafafa] py-0 lg:py-6 font-sans flex flex-col justify-center">
+            <Helmet>
+                <title>{post?.title ? `${post.title} | ConnectBlog` : 'ConnectBlog'}</title>
+                <meta property="og:title" content={post?.title || 'Post'} />
+                <meta property="og:description" content={post?.content ? post.content.substring(0, 150) : ''} />
+                {post?.image && <meta property="og:image" content={formatImageUrl(post.image)} />}
+                <meta property="og:type" content="article" />
+                <meta name="twitter:card" content="summary_large_image" />
+            </Helmet>
 
-            <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div className="py-4">
-                    <button onClick={handleBack} className="group flex items-center space-x-2 text-gray-500 hover:text-primary-600 transition-all duration-200 font-bold bg-white px-4 py-2 rounded-xl shadow-sm border border-gray-100 hover:shadow-md hover:-translate-x-1">
-                        <ArrowLeft size={18} className="group-hover:animate-pulse" />
-                        <span>Back</span>
+            <div className="w-full max-w-[1100px] mx-auto lg:px-4 flex flex-col h-full lg:h-[calc(100vh-120px)] lg:max-h-[850px]">
+                {/* Back button wrapper */}
+                <div className="p-3 lg:p-0 lg:pb-3 shrink-0 flex">
+                    <button onClick={handleBack} className="flex items-center space-x-2 text-gray-500 hover:text-primary-600 font-semibold transition-all">
+                        <ArrowLeft size={20} />
+                        <span className="hidden sm:inline">Back</span>
                     </button>
                 </div>
 
-                <article className="bg-white sm:rounded-xl shadow-sm border border-gray-200 overflow-hidden break-words">
-                    <div className="p-4 sm:p-5 flex items-start justify-between">
-                        <div className="flex items-center space-x-3 sm:space-x-4">
-                            <Link to={`/profile/${post.author._id}`} className="flex-shrink-0 relative">
-                                <img src={post.author.profilePic || `https://ui-avatars.com/api/?name=${encodeURIComponent(post.author.username)}&background=0ea5e9&color=fff&bold=true`} alt={post.author.username} className="h-12 w-12 sm:h-14 sm:w-14 rounded-full object-cover border border-gray-100 shadow-sm" />
-                            </Link>
-                            <div className="flex flex-col">
-                                <Link to={`/profile/${post.author._id}`} className="font-semibold text-[15px] sm:text-base text-gray-900 hover:text-primary-600 transition-colors leading-tight flex items-center gap-1.5">
-                                    {post.author.username}
-                                    {post.author.pronouns && <span className="text-xs font-normal text-gray-500 hidden sm:inline-block">({post.author.pronouns})</span>}
-                                </Link>
-                                <p className="text-xs sm:text-[13px] text-gray-500 mt-0.5 max-w-[200px] sm:max-w-none truncate">{post.author.bio || 'ConnectBlog Member'}</p>
-                                <div className="flex items-center text-xs text-gray-500 mt-0.5 space-x-1">
-                                    <span>{formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}</span>
-                                </div>
-                            </div>
-                        </div>
-                        {isAuthor && (
-                            <div className="relative">
-                                <button onClick={() => setShowMenu(!showMenu)} className="text-gray-500 hover:text-gray-900 p-2 rounded-full hover:bg-gray-100 transition-colors">
-                                    <MoreHorizontal size={20} />
-                                </button>
-                                {showMenu && (
-                                    <>
-                                        <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)}></div>
-                                        <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-100 z-20 py-2 overflow-hidden">
-                                            <button onClick={() => navigate(`/edit-post/${id}`)} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
-                                                <Edit size={16} /> Edit Post
-                                            </button>
-                                            <button onClick={async () => {
-                                                await api.put(`/posts/${id}`, { isArchived: !post.isArchived });
-                                                queryClient.invalidateQueries({ queryKey: ['post', id] });
-                                                toast.success(post.isArchived ? 'Post unarchived' : 'Post archived');
-                                                setShowMenu(false);
-                                            }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
-                                                <Archive size={16} /> {post.isArchived ? 'Unarchive' : 'Archive'}
-                                            </button>
-                                            <button onClick={async () => {
-                                                await api.put(`/posts/${id}`, { hideLikes: !post.hideLikes });
-                                                queryClient.invalidateQueries({ queryKey: ['post', id] });
-                                                toast.success(post.hideLikes ? 'Likes shown' : 'Likes hidden');
-                                                setShowMenu(false);
-                                            }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
-                                                {post.hideLikes ? <Eye size={16} /> : <EyeOff size={16} />}
-                                                {post.hideLikes ? 'Show Likes' : 'Hide Likes'}
-                                            </button>
-                                            <div className="border-t border-gray-100 my-1"></div>
-                                            <button onClick={async () => {
-                                                if (window.confirm('Delete this post?')) {
-                                                    await api.delete(`/posts/${id}`);
-                                                    toast.success('Deleted');
-                                                    navigate('/');
-                                                }
-                                            }} className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2">
-                                                <Trash2 size={16} /> Delete Post
-                                            </button>
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="px-4 sm:px-5 pb-3">
-                        <h1 className="text-[18px] sm:text-[20px] font-bold text-gray-900 mb-4 leading-snug">{post.title}</h1>
-                        <div className="text-[14px] sm:text-[15px] text-gray-800 leading-[1.6] font-sans prose prose-blue max-w-none" dangerouslySetInnerHTML={{ __html: (post.content || '').replace(/@([a-zA-Z0-9_]+)/g, '<a href="/profile/$1" style="color: #0ea5e9; font-weight: 700; text-decoration: none;">@$1</a>') }} />
-                    </div>
-
+                <div className="flex-1 bg-white lg:rounded-bl-[4px] lg:rounded-br-[4px] lg:shadow-md lg:border lg:border-gray-200 overflow-hidden flex flex-col lg:flex-row h-full">
+                    
+                    {/* LEFT COLUMN: Media (Only if image exists, otherwise right column takes full width) */}
                     {post.image && (
-                        <div className="w-full bg-[#f8f9fa] border-y border-gray-100 mt-2">
-                            <img src={post.image} alt={post.title} className="w-full max-h-[600px] object-contain" loading="lazy" />
+                        <div className="w-full lg:w-[55%] xl:w-[60%] bg-black flex items-center justify-center min-h-[400px] lg:min-h-0 relative">
+                            <img src={formatImageUrl(post.image)} alt={post.title} className="w-full h-full object-contain" />
                         </div>
                     )}
 
-                    <div className="px-4 py-3 flex items-center justify-between text-[13px] text-gray-500 border-b border-gray-100">
-                        <div className="flex items-center gap-1.5">
-                            {((!post.hideLikes || isAuthor) && likesCount > 0) && (
-                                <span className="hover:text-blue-600 hover:underline cursor-pointer">{likesCount} likes</span>
+                    {/* RIGHT COLUMN: Interaction Hub */}
+                    <div className={`w-full ${post.image ? 'lg:w-[45%] xl:w-[40%]' : 'w-full max-w-[700px] mx-auto'} flex flex-col h-full bg-white lg:border-l border-gray-200`}>
+                        
+                        {/* 1. Header (Author Info & Menu) */}
+                        <div className="p-4 border-b border-gray-200 flex items-center justify-between shrink-0 bg-white">
+                            <div className="flex items-center space-x-3">
+                                <Link to={`/profile/${post.author?._id}`}>
+                                    <img src={formatImageUrl(post.author?.profilePic)} alt={post.author?.username} className="w-9 h-9 rounded-full object-cover border border-gray-200" />
+                                </Link>
+                                <div className="flex flex-col">
+                                    <Link to={`/profile/${post.author?._id}`} className="font-semibold text-[14px] text-gray-900 hover:text-gray-500 leading-tight">
+                                        {post.author?.username || 'User'}
+                                    </Link>
+                                </div>
+                            </div>
+                            {isAuthor && (
+                                <div className="relative">
+                                    <button onClick={() => setShowMenu(!showMenu)} className="p-1 text-gray-900 hover:text-gray-500 transition-colors">
+                                        <MoreHorizontal size={20} />
+                                    </button>
+                                    {showMenu && (
+                                        <>
+                                            <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)}></div>
+                                            <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-20 py-1 overflow-hidden">
+                                                <button onClick={() => navigate(`/edit-post/${id}`)} className="w-full text-left px-4 py-2 text-sm text-gray-900 hover:bg-gray-50 flex items-center gap-2"><Edit size={16} /> Edit</button>
+                                                <button onClick={async () => {
+                                                    await api.put(`/posts/${id}`, { isArchived: !post.isArchived });
+                                                    queryClient.invalidateQueries({ queryKey: ['post', id] });
+                                                    toast.success(post.isArchived ? 'Unarchived' : 'Archived');
+                                                    setShowMenu(false);
+                                                }} className="w-full text-left px-4 py-2 text-sm text-gray-900 hover:bg-gray-50 flex items-center gap-2">
+                                                    <Archive size={16} /> {post.isArchived ? 'Unarchive' : 'Archive'}
+                                                </button>
+                                                <button onClick={async () => {
+                                                    await api.put(`/posts/${id}`, { hideLikes: !post.hideLikes });
+                                                    queryClient.invalidateQueries({ queryKey: ['post', id] });
+                                                    toast.success(post.hideLikes ? 'Likes shown' : 'Likes hidden');
+                                                    setShowMenu(false);
+                                                }} className="w-full text-left px-4 py-2 text-sm text-gray-900 hover:bg-gray-50 flex items-center gap-2">
+                                                    {post.hideLikes ? <Eye size={16} /> : <EyeOff size={16} />}
+                                                    {post.hideLikes ? 'Show Likes' : 'Hide Likes'}
+                                                </button>
+                                                <div className="border-t border-gray-100 my-1"></div>
+                                                <button onClick={async () => {
+                                                    if (window.confirm('Delete this post?')) {
+                                                        await api.delete(`/posts/${id}`);
+                                                        toast.success('Deleted');
+                                                        navigate('/');
+                                                    }
+                                                }} className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-red-50 flex items-center gap-2">
+                                                    <Trash2 size={16} /> Delete
+                                                </button>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
                             )}
                         </div>
-                        <div className="flex gap-3">
-                            <span className="hover:text-blue-600 hover:underline cursor-pointer">{comments.length} comments</span>
-                        </div>
-                    </div>
 
-                    <div className="px-2 py-1 flex items-center justify-between border-b border-gray-100 sm:px-4">
-                        <button onClick={() => likeMutation.mutate(isLiked)} className={`flex flex-1 items-center justify-center space-x-2 py-3 px-2 rounded-lg font-medium text-[14px] transition-colors ${isLiked ? 'text-blue-600 hover:bg-blue-50' : 'text-gray-500 hover:bg-gray-100'}`}>
-                            <Heart size={20} className={isLiked ? "fill-blue-600" : ""} />
-                            <span className="hidden sm:block">Like</span>
-                        </button>
-                        <button onClick={() => document.getElementById('comment-input')?.focus()} className="flex flex-1 items-center justify-center space-x-2 py-3 px-2 rounded-lg font-medium text-[14px] text-gray-500 hover:bg-gray-100 transition-colors">
-                            <MessageCircle size={20} />
-                            <span className="hidden sm:block">Comment</span>
-                        </button>
-                        <button onClick={() => { navigator.clipboard.writeText(window.location.href); toast.success('Link copied!'); }} className="flex flex-1 items-center justify-center space-x-2 py-3 px-2 rounded-lg font-medium text-[14px] text-gray-500 hover:bg-gray-100 transition-colors">
-                            <Share2 size={20} />
-                            <span className="hidden sm:block">Share</span>
-                        </button>
-                    </div>
-
-                    <div className="p-4 sm:p-5 bg-white space-y-5">
-                        {user ? (
-                            <form onSubmit={(e) => { e.preventDefault(); commentMutation.mutate(commentText); }} className="flex gap-3 items-start">
-                                <img src={user.profilePic || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.username)}&background=0ea5e9&color=fff&bold=true`} alt={user.username} className="w-10 h-10 rounded-full object-cover border border-gray-200 shadow-sm" />
-                                <div className="flex-1 border border-gray-300 rounded-full flex items-center pl-4 pr-1.5 focus-within:border-gray-500 focus-within:shadow-sm overflow-hidden transition-all h-auto min-h-[46px]">
-                                    <input id="comment-input" type="text" value={commentText} onChange={(e) => setCommentText(e.target.value)} placeholder="Add a comment..." className="w-full bg-transparent outline-none text-[14px] py-1.5" disabled={commentMutation.isPending} />
-                                    <button type="submit" disabled={commentMutation.isPending || !commentText.trim()} className="text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 px-4 py-1.5 font-semibold text-sm rounded-full transition-colors ml-2">Post</button>
+                        {/* 2. Scrollable Body (Caption + Comments) */}
+                        <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+                            {/* Post Caption/Content */}
+                            <div className="flex items-start space-x-3 mb-6">
+                                <Link to={`/profile/${post.author?._id}`} className="shrink-0 mt-1">
+                                    <img src={formatImageUrl(post.author?.profilePic)} alt={post.author?.username} className="w-9 h-9 rounded-full object-cover border border-gray-200" />
+                                </Link>
+                                <div>
+                                    <h1 className="text-[14px] font-bold text-gray-900 leading-snug mb-1">{post.title}</h1>
+                                    <div className="text-[14px] text-gray-900 leading-[1.5] whitespace-pre-wrap break-words" dangerouslySetInnerHTML={{ __html: (post.content || '').replace(/@([a-zA-Z0-9_]+)/g, '<a href="/profile/$1" style="color: #00376b; font-weight: 600; text-decoration: none;">@$1</a>') }} />
+                                    {!post.image && (
+                                        <p className="text-[12px] text-gray-500 mt-2">{post.createdAt ? formatDistanceToNow(new Date(post.createdAt), { addSuffix: true }).toUpperCase() : 'RECENTLY'}</p>
+                                    )}
                                 </div>
-                            </form>
-                        ) : (
-                            <div className="bg-gray-50 rounded-lg p-4 text-center border border-gray-200"><p className="text-gray-600 text-sm">Please log in to join the conversation.</p></div>
-                        )}
+                            </div>
 
-                        <div className="space-y-4 pt-4">
-                            {commentsLoading ? <div className="flex justify-center"><Loader2 className="animate-spin text-gray-300" /></div> : comments.map((comment) => (
-                                <div key={comment._id} className="flex space-x-3 group">
-                                    <Link to={`/profile/${comment.user?._id}`}>
-                                        <img src={comment.user?.profilePic || `https://ui-avatars.com/api/?name=${encodeURIComponent(comment.user?.username || 'User')}&background=0ea5e9&color=fff&bold=true`} alt={comment.user?.username || 'User'} className="h-10 w-10 rounded-full object-cover border border-gray-200 mt-1 shadow-sm" />
-                                    </Link>
-                                    <div className="flex-1 bg-gray-100 rounded-tr-xl rounded-b-xl rounded-bl-sm p-3 group-hover:bg-gray-200 transition-colors">
-                                        <div className="flex items-start justify-between">
-                                            <div>
-                                                <Link to={`/profile/${comment.user?._id}`} className="font-semibold text-gray-900 text-[13px] hover:text-blue-600 transition-colors leading-tight">{comment.user?.username || 'User'}</Link>
-                                                <p className="text-gray-500 text-[11px] truncate max-w-[200px] mb-1">{comment.user?.bio}</p>
+                            {/* Comments List */}
+                            <div className="space-y-5">
+                                {commentsLoading ? (
+                                    <div className="flex justify-center py-4"><Loader2 className="animate-spin text-gray-400" size={24} /></div>
+                                ) : comments.length === 0 ? (
+                                    <div className="text-center text-gray-500 text-[14px] py-10 font-semibold">No comments yet.<br/><span className="font-normal text-sm">Start the conversation.</span></div>
+                                ) : (
+                                    comments.map((comment) => (
+                                        <div key={comment._id} className="flex space-x-3 group">
+                                            <Link to={`/profile/${comment.user?._id}`} className="shrink-0">
+                                                <img src={formatImageUrl(comment.user?.profilePic)} alt={comment.user?.username} className="w-9 h-9 rounded-full object-cover border border-gray-200" />
+                                            </Link>
+                                            <div className="flex-1 pt-0.5">
+                                                <p className="text-[14px] leading-[1.3]">
+                                                    <Link to={`/profile/${comment.user?._id}`} className="font-semibold text-gray-900 hover:text-gray-500 mr-2">
+                                                        {comment.user?.username}
+                                                    </Link>
+                                                    <span className="text-gray-900" dangerouslySetInnerHTML={{ __html: (comment.text || '').replace(/@([a-zA-Z0-9_]+)/g, '<a href="/profile/$1" style="color: #00376b; font-weight: 600; text-decoration: none;">@$1</a>') }} />
+                                                </p>
+                                                <div className="flex items-center gap-3 mt-1.5">
+                                                    <span className="text-[12px] text-gray-500">{comment.createdAt ? formatDistanceToNow(new Date(comment.createdAt), { addSuffix: false }).replace('about ', '') : 'just now'}</span>
+                                                </div>
                                             </div>
-                                            <span className="text-[11px] text-gray-500 font-medium">{formatDistanceToNow(new Date(comment.createdAt), { addSuffix: false })}</span>
                                         </div>
-                                        <p className="text-gray-800 text-[13.5px] whitespace-pre-wrap mt-0.5 leading-snug" dangerouslySetInnerHTML={{ __html: (comment.text || '').replace(/@([a-zA-Z0-9_]+)/g, '<a href="/profile/$1" style="color: #0ea5e9; font-weight: 700; text-decoration: none;">@$1</a>') }} />
-                                    </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+
+                        {/* 3. Footer (Action Bar + Add Comment) */}
+                        <div className="bg-white shrink-0 border-t border-gray-200">
+                            {/* Actions */}
+                            <div className="px-4 pt-3 pb-2 flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                    <button onClick={() => likeMutation.mutate(isLiked)} className="hover:opacity-50 transition-opacity">
+                                        <Heart size={26} className={isLiked ? "fill-red-500 text-red-500" : "text-gray-900"} />
+                                    </button>
+                                    <button onClick={() => document.getElementById('comment-input')?.focus()} className="hover:opacity-50 transition-opacity text-gray-900">
+                                        <MessageCircle size={26} className="transform -scale-x-100" />
+                                    </button>
+                                    <button onClick={() => { navigator.clipboard.writeText(window.location.href); toast.success('Link copied!'); }} className="hover:opacity-50 transition-opacity text-gray-900">
+                                        <Share2 size={26} />
+                                    </button>
                                 </div>
-                            ))}
+                                <button onClick={() => bookmarkMutation.mutate()} className="hover:opacity-50 transition-opacity text-gray-900">
+                                    <Bookmark size={26} className={isBookmarked ? "fill-gray-900" : ""} />
+                                </button>
+                            </div>
+
+                            {/* Likes info */}
+                            <div className="px-4 pb-3">
+                                {((!post.hideLikes || isAuthor) && likesCount > 0) && (
+                                    <span className="text-[14px] font-semibold text-gray-900 cursor-pointer">{likesCount} likes</span>
+                                )}
+                                {post.image && (
+                                    <p className="text-[10px] text-gray-500 mt-1 uppercase tracking-wider">{post.createdAt ? formatDistanceToNow(new Date(post.createdAt)) : 'RECENTLY'} AGO</p>
+                                )}
+                            </div>
+
+                            {/* Comment Input */}
+                            <div className="px-4 py-3 border-t border-gray-200">
+                                {user ? (
+                                    <form onSubmit={(e) => { 
+                                        e.preventDefault(); 
+                                        if (!commentText.trim()) return;
+                                        commentMutation.mutate(commentText); 
+                                        setCommentText(''); // Zero-latency synchronous clear
+                                    }} className="flex items-center">
+                                        <input 
+                                            id="comment-input" 
+                                            type="text" 
+                                            value={commentText} 
+                                            onChange={(e) => setCommentText(e.target.value)} 
+                                            placeholder="Add a comment..." 
+                                            className="w-full bg-transparent outline-none text-[14px] placeholder-gray-500 text-gray-900" 
+                                            disabled={commentMutation.isPending} 
+                                            autoComplete="off"
+                                        />
+                                        <button 
+                                            type="submit" 
+                                            disabled={commentMutation.isPending || !commentText.trim()} 
+                                            className="text-blue-500 hover:text-blue-900 font-semibold text-[14px] disabled:opacity-50 transition-colors ml-2"
+                                        >
+                                            Post
+                                        </button>
+                                    </form>
+                                ) : (
+                                    <div className="text-[14px] text-gray-500">
+                                        <Link to="/login" className="text-blue-500 font-semibold hover:underline">Log in</Link> to like or comment.
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
-                </article>
+                </div>
             </div>
-
-            {showBackToTop && (
-                <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="fixed bottom-8 right-8 p-3 bg-white text-primary-600 rounded-2xl shadow-2xl border border-gray-100 hover:bg-primary-50 transition-all duration-300 transform hover:-translate-y-1 z-40 animate-in fade-in zoom-in duration-300">
-                    <ArrowLeft className="w-6 h-6 transform rotate-90" />
-                </button>
-            )}
+            
+            {/* Custom scrollbar styles */}
+            <style jsx="true">{`
+                .custom-scrollbar::-webkit-scrollbar {
+                    width: 0px;
+                    background: transparent;
+                }
+            `}</style>
         </div>
     );
 };

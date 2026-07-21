@@ -27,6 +27,9 @@ lsof -ti:5000 | xargs kill -9 2>/dev/null
 lsof -ti:3000 | xargs kill -9 2>/dev/null
 
 # Start Backend
+echo "Ensure uploads directory exists"
+mkdir -p backend/uploads
+
 echo "Backend: Starting on Port 5000..."
 cd "$BASE_DIR/backend"
 if [ ! -d "node_modules" ]; then

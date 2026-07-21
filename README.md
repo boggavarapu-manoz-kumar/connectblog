@@ -79,6 +79,12 @@ We've provided a helper script to automate the setup and launch of both the fron
     - Frontend: `http://localhost:3000`
     - Backend API: `http://localhost:5000`
 
+### 🔑 Demo Credentials
+For testing purposes, the system is automatically seeded with a demo user:
+- **Email**: `demo@example.com`
+- **Password**: `password123`
+
+
 ### Manual Installation
 
 If you prefer to run services manually:

@@ -21,16 +21,15 @@ export const AuthProvider = ({ children }) => {
         }
 
         try {
-            const token = localStorage.getItem('token');
-            if (token) {
-                const { data } = await api.get('/auth/me');
-                setUser(data);
-                localStorage.setItem('user', JSON.stringify(data));
-            }
+            // Backend now uses HttpOnly cookies, so we just make the request.
+            // If the cookie is present and valid, this succeeds.
+            const { data } = await api.get('/auth/me');
+            setUser(data);
+            localStorage.setItem('user', JSON.stringify(data));
         } catch (error) {
-            console.log('User check failed:', error);
-            localStorage.removeItem('token');
+            console.log('User check failed (Not logged in)');
             localStorage.removeItem('user');
+            setUser(null);
         } finally {
             setLoading(false);
         }
@@ -40,7 +39,7 @@ export const AuthProvider = ({ children }) => {
     const login = async (email, password) => {
         try {
             const { data } = await api.post('/auth/login', { email, password });
-            localStorage.setItem('token', data.token);
+            // Token is now set securely via HttpOnly cookie by the backend
             localStorage.setItem('user', JSON.stringify(data));
             setUser(data);
             toast.success('Login Successful! Welcome back.');
@@ -55,7 +54,6 @@ export const AuthProvider = ({ children }) => {
     const register = async (username, email, password) => {
         try {
             const { data } = await api.post('/auth/register', { username, email, password });
-            localStorage.setItem('token', data.token);
             localStorage.setItem('user', JSON.stringify(data));
             setUser(data);
             toast.success('Registration Successful! Welcome.');
@@ -67,8 +65,12 @@ export const AuthProvider = ({ children }) => {
     };
 
     // Logout function
-    const logout = () => {
-        localStorage.removeItem('token');
+    const logout = async () => {
+        try {
+            await api.post('/auth/logout');
+        } catch (err) {
+            console.error('Logout error', err);
+        }
         localStorage.removeItem('user');
         setUser(null);
         toast.success('Logged out successfully');

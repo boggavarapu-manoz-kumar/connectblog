@@ -8,6 +8,8 @@ import { Settings, Loader2, Link as LinkIcon, Bookmark, Grid, Archive, AlertCirc
 import toast from 'react-hot-toast';
 import EditProfileModal from '../components/profile/EditProfileModal';
 import UserListModal from '../components/profile/UserListModal';
+import { formatImageUrl } from '../utils/formatUrl';
+
 
 const Profile = () => {
     const { id: urlUserId } = useParams();
@@ -151,7 +153,9 @@ const Profile = () => {
             if (myId && context?.snapshots?.myProfile) {
                 queryClient.setQueryData(['profile', myId], context.snapshots.myProfile);
             }
-            toast.error("Sync failed");
+            if (err.response?.status !== 400 && err.response?.status !== 401) {
+                toast.error(err.response?.data?.message || "Network sync delayed");
+            }
         },
         onSuccess: (data, { isFollowing }) => {
             toast.success(isFollowing ? "Unfollowed" : "Following");
@@ -218,10 +222,10 @@ const Profile = () => {
         );
     }
 
-    const isFollowing = profileUser.followers?.includes(currentUser?._id || currentUser?.id);
+    const isFollowing = profileUser?.isFollowing;
     const stats = {
-        followers: profileUser.followers?.length || 0,
-        following: profileUser.following?.length || 0,
+        followers: profileUser.followerCount || 0,
+        following: profileUser.followingCount || 0,
         posts: posts.length
     };
 
@@ -236,7 +240,8 @@ const Profile = () => {
                     {profileUser.coverImage ? (
                         <>
                             <img
-                                src={profileUser.coverImage}
+                                src={formatImageUrl(profileUser.coverImage)}
+
                                 alt={`${profileUser.username}'s banner`}
                                 className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
                             />
@@ -258,10 +263,11 @@ const Profile = () => {
                     <div className="flex justify-between items-end -mt-[12%] sm:-mt-[10%] mb-4">
                         <div className="flex-shrink-0 relative">
                             <img
-                                src={profileUser.profilePic || `https://ui-avatars.com/api/?name=${encodeURIComponent(profileUser.username)}&background=efefef&color=333&bold=true`}
+                                src={formatImageUrl(profileUser.profilePic)}
                                 alt={profileUser.username}
                                 className="w-[100px] h-[100px] sm:w-[150px] sm:h-[150px] rounded-full object-cover border-4 border-white shadow-sm bg-white"
                             />
+
                         </div>
                     </div>
 

@@ -13,7 +13,7 @@ const postSchema = new mongoose.Schema({
     },
     image: {
         type: String,
-        default: 'https://via.placeholder.com/600x400.png?text=No+Image'
+        default: ''
     },
     hashtags: [{
         type: String,
@@ -24,26 +24,31 @@ const postSchema = new mongoose.Schema({
         ref: 'User',
         required: true
     },
-    likes: [{
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User'
-    }],
-    comments: [{
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Comment'
-    }],
+    likeCount: {
+        type: Number,
+        default: 0
+    },
     isArchived: {
         type: Boolean,
         default: false
     }
 }, {
-    timestamps: true
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true }
+});
+
+// Virtual populate for comments
+postSchema.virtual('comments', {
+    ref: 'Comment',
+    localField: '_id',
+    foreignField: 'post'
 });
 
 // ── Performance Indexes ───────────────────────────────────────────────────────
 postSchema.index({ title: 'text', content: 'text', hashtags: 'text' });  // full-text search
 postSchema.index({ author: 1, createdAt: -1 });                           // profile posts (paginated)
-postSchema.index({ isArchived: 1, createdAt: -1 });                        // feed match + sort (compound — replaces 2 separate indexes)
-postSchema.index({ likes: 1 });                                            // trending sort by like count
+postSchema.index({ isArchived: 1, createdAt: -1 });                        // feed match + sort
+postSchema.index({ likeCount: -1, createdAt: -1 });                        // trending feed sort
 
 module.exports = mongoose.model('Post', postSchema);

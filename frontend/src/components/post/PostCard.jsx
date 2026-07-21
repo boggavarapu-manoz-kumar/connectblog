@@ -6,6 +6,8 @@ import api from '../../services/api';
 import { Heart, MessageCircle, Share2, MoreHorizontal, Bookmark, Edit, Trash2, Archive, X } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import toast from 'react-hot-toast';
+import { formatImageUrl } from '../../utils/formatUrl';
+
 
 const PostCard = ({ post, onPostUpdate }) => {
     const { user, updateUser } = useAuth();
@@ -106,7 +108,9 @@ const PostCard = ({ post, onPostUpdate }) => {
             if (context?.snapshots?.singlePost) {
                 queryClient.setQueryData(['post', post._id], context.snapshots.singlePost);
             }
-            toast.error("Sync failed");
+            if (err.response?.status !== 400 && err.response?.status !== 401) {
+                toast.error(err.response?.data?.message || "Network sync delayed");
+            }
         },
         onSettled: () => {
             queryClient.invalidateQueries({ queryKey: ['posts-feed'] });
@@ -160,12 +164,14 @@ const PostCard = ({ post, onPostUpdate }) => {
             // 2. Snapshot
             const snapshots = {
                 feeds: queryClient.getQueriesData({ queryKey: ['posts-feed'] }),
-                profilePosts: queryClient.getQueriesData({ queryKey: ['profile-posts'] })
+                profilePosts: queryClient.getQueriesData({ queryKey: ['profile-posts'] }),
+                postComments: queryClient.getQueryData(['post-comments', post._id]),
+                singlePost: queryClient.getQueryData(['post', post._id])
             };
 
-            // Fake user object for immediate UI render
+            const tempCommentId = Date.now().toString();
             const tempComment = {
-                _id: Date.now().toString(),
+                _id: tempCommentId,
                 text: text,
                 user: {
                     _id: user._id,
@@ -198,7 +204,19 @@ const PostCard = ({ post, onPostUpdate }) => {
                 return { ...old, posts: old.posts.map(updatePostComments) };
             });
 
-            return { snapshots };
+            // 5. Optimistic Update: PostDetail Comments
+            queryClient.setQueryData(['post-comments', post._id], old => {
+                const oldComments = Array.isArray(old) ? old : [];
+                return [tempComment, ...oldComments];
+            });
+
+            // 6. Optimistic Update: Single Post
+            queryClient.setQueryData(['post', post._id], old => {
+                if (!old) return old;
+                return updatePostComments(old);
+            });
+
+            return { snapshots, tempCommentId };
         },
         onError: (err, variables, context) => {
             // Precise Rollback
@@ -212,11 +230,65 @@ const PostCard = ({ post, onPostUpdate }) => {
                     queryClient.setQueryData(queryKey, data);
                 });
             }
-            toast.error('Failed to add comment');
+            if (context?.snapshots?.postComments) {
+                queryClient.setQueryData(['post-comments', post._id], context.snapshots.postComments);
+            }
+            if (context?.snapshots?.singlePost) {
+                queryClient.setQueryData(['post', post._id], context.snapshots.singlePost);
+            }
+            if (err.response?.status !== 401) {
+                toast.error('Failed to add comment');
+            }
         },
-        onSuccess: () => {
+        onSuccess: (newComment, variables, context) => {
+            // Replace the temporary comment with the actual database comment
+            const tempCommentId = context?.tempCommentId;
+            
+            const replaceComment = (p) => {
+                if (p._id !== post._id && p.id !== post._id) return p;
+                return {
+                    ...p,
+                    comments: (p.comments || []).map(c => 
+                        c._id === tempCommentId ? newComment : c
+                    )
+                };
+            };
+
+            // Update Feed
+            queryClient.setQueriesData({ queryKey: ['posts-feed'] }, old => {
+                if (!old || !old.pages) return old;
+                return {
+                    ...old,
+                    pages: old.pages.map(page => ({
+                        ...page,
+                        posts: page.posts?.map(replaceComment) || []
+                    }))
+                };
+            });
+
+            // Update Profile
+            queryClient.setQueriesData({ queryKey: ['profile-posts'] }, old => {
+                if (!old || !old.posts) return old;
+                return { ...old, posts: old.posts.map(replaceComment) };
+            });
+
+            // Update Detail Comments
+            queryClient.setQueryData(['post-comments', post._id], old => {
+                const oldComments = Array.isArray(old) ? old : [];
+                return oldComments.map(c => c._id === tempCommentId ? newComment : c);
+            });
+
+            // Update Single Post
+            queryClient.setQueryData(['post', post._id], old => {
+                if (!old) return old;
+                return replaceComment(old);
+            });
+
+            // Invalidate in background to ensure total sync
             queryClient.invalidateQueries({ queryKey: ['posts-feed'] });
             queryClient.invalidateQueries({ queryKey: ['profile-posts'] });
+            queryClient.invalidateQueries({ queryKey: ['post-comments', post._id] });
+            queryClient.invalidateQueries({ queryKey: ['post', post._id] });
         }
     });
 
@@ -271,7 +343,9 @@ const PostCard = ({ post, onPostUpdate }) => {
         onError: (err, variables, context) => {
             if (context?.snapshots?.feeds) context.snapshots.feeds.forEach(([key, data]) => queryClient.setQueryData(key, data));
             if (context?.snapshots?.profilePosts) context.snapshots.profilePosts.forEach(([key, data]) => queryClient.setQueryData(key, data));
-            toast.error('Failed to delete comment');
+            if (err.response?.status !== 401) {
+                toast.error('Failed to delete comment');
+            }
         },
         onSettled: () => {
             queryClient.invalidateQueries({ queryKey: ['posts-feed'] });
@@ -341,7 +415,9 @@ const PostCard = ({ post, onPostUpdate }) => {
             if (context.previousFeed) queryClient.setQueryData(['posts-feed'], context.previousFeed);
             if (context.previousProfilePosts) queryClient.setQueryData(['profile-posts', context.authorId], context.previousProfilePosts);
             if (context.previousPrivateData) queryClient.setQueryData(['profile-private', context.authorId], context.previousPrivateData);
-            toast.error('Sync failed. Please try again.');
+            if (err.response?.status !== 401) {
+                toast.error(err.response?.data?.message || "Failed to sync deletion.");
+            }
         },
         onSettled: (data, variables, context) => {
             queryClient.invalidateQueries({ queryKey: ['posts-feed'] });
@@ -386,10 +462,12 @@ const PostCard = ({ post, onPostUpdate }) => {
                 <div className="flex items-center space-x-3">
                     <Link to={`/profile/${post.author?._id || post.author}`}>
                         <img
-                            src={post.author?.profilePic || `https://ui-avatars.com/api/?name=${encodeURIComponent(post.author?.username || 'User')}&background=0ea5e9&color=fff&bold=true`}
+                            loading="lazy"
+                            src={formatImageUrl(post.author?.profilePic)}
                             alt={post.author?.username}
                             className="h-10 w-10 rounded-full object-cover border border-gray-100 shadow-sm"
                         />
+
                     </Link>
                     <div>
                         <Link to={`/profile/${post.author?._id || post.author}`} className="font-semibold text-gray-900 hover:text-primary-600 transition-colors">
@@ -480,10 +558,12 @@ const PostCard = ({ post, onPostUpdate }) => {
                 {post.image && (
                     <div className="w-full bg-[#f8f9fa] border-y border-gray-100 overflow-hidden relative">
                         <img
-                            src={post.image}
+                            loading="lazy"
+                            src={formatImageUrl(post.image)}
                             alt={post.title}
                             className="w-full max-h-[500px] object-cover sm:object-contain"
                             loading="lazy"
+
                             onError={(e) => {
                                 e.target.onerror = null;
                                 e.target.src = 'https://via.placeholder.com/1200x800.png?text=Content+Is+Available+But+Image+Failed+To+Load';
@@ -500,7 +580,7 @@ const PostCard = ({ post, onPostUpdate }) => {
                         onClick={() => likeMutation.mutate({ liked: isLiked })}
                         className={`flex items-center space-x-2 group ${isLiked ? 'text-red-500' : 'text-gray-500 hover:text-red-500'}`}
                     >
-                        <Heart size={20} className={`transform group-hover:scale-110 transition-transform ${isLiked ? 'fill-current' : ''}`} />
+                        <Heart size={20} className={`transform group-hover:scale-110 transition-transform ${isLiked ? 'fill-current heart-pop' : ''}`} />
                         <span className="font-medium text-sm">{likesCount}</span>
                     </button>
 
@@ -540,10 +620,12 @@ const PostCard = ({ post, onPostUpdate }) => {
                                     <div key={comment._id} className="flex space-x-3">
                                         <Link to={`/profile/${comment.user?._id || comment.user}`}>
                                             <img
-                                                src={comment.user?.profilePic || `https://ui-avatars.com/api/?name=${encodeURIComponent(comment.user?.username || 'User')}&background=efefef&color=333&bold=true`}
+                                                loading="lazy"
+                                                src={formatImageUrl(comment.user?.profilePic)}
                                                 alt={comment.user?.username}
                                                 className="h-8 w-8 rounded-full object-cover border border-gray-200"
                                             />
+
                                         </Link>
                                         <div className="flex-1 bg-white p-3 rounded-2xl shadow-sm border border-gray-100">
                                             <div className="flex items-center justify-between mb-1">

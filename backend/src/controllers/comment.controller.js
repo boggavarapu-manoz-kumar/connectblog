@@ -1,6 +1,7 @@
 const Comment = require('../models/Comment.model');
 const Post = require('../models/Post.model');
 const { sendNotification, processMentions } = require('../utils/notify');
+const { invalidateCache } = require('../utils/cache');
 
 // @desc    Add a comment
 // @route   POST /api/posts/:postId/comments
@@ -20,10 +21,6 @@ const addComment = async (req, res) => {
             post: req.params.postId
         });
 
-        // Add comment to post's comment array
-        post.comments.push(comment._id);
-        await post.save();
-
         // ------------------ Notification Engine Trigger ------------------
         await sendNotification(req, {
             recipientId: post.author,
@@ -36,6 +33,11 @@ const addComment = async (req, res) => {
         // -----------------------------------------------------------------
 
         const fullComment = await Comment.findById(comment._id).populate('user', 'username profilePic');
+
+        // Invalidate backend caches so frontend optimistic UI isn't overwritten by stale data
+        invalidateCache(`api/posts/${post._id}`);
+        invalidateCache('api/posts');
+        invalidateCache(req.user.id);
 
         res.status(201).json(fullComment);
     } catch (error) {
@@ -75,12 +77,14 @@ const deleteComment = async (req, res) => {
             return res.status(401).json({ message: 'User not authorized' });
         }
 
-        // Remove comment from post
-        await Post.findByIdAndUpdate(comment.post, {
-            $pull: { comments: comment._id }
-        });
+        // Remove comment from post (array removed via virtual populate architecture)
 
         await comment.deleteOne();
+
+        // Invalidate backend caches
+        invalidateCache(`api/posts/${comment.post}`);
+        invalidateCache('api/posts');
+        invalidateCache(req.user.id);
 
         res.status(200).json({ id: req.params.id });
     } catch (error) {

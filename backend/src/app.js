@@ -9,6 +9,7 @@ const mongoSanitize = require('express-mongo-sanitize');
 const rateLimit = require('express-rate-limit');
 
 const app = express();
+app.set('trust proxy', 1); // Required for secure cookies on Render
 app.use(compression());
 
 // Middleware

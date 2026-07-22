@@ -467,7 +467,7 @@ const PostCard = ({ post, onPostUpdate }) => {
 
                     </Link>
                     <div>
-                        <Link to={`/profile/${post.author?._id || post.author}`} className="font-semibold text-gray-900 hover:text-primary-600 transition-colors">
+                        <Link to={`/profile/${post.author?._id || post.author}`} className="font-semibold text-gray-900 hover:text-primary-700 transition-colors">
                             {post.author?.username}
                         </Link>
                         <p className="text-xs text-gray-500">
@@ -477,19 +477,20 @@ const PostCard = ({ post, onPostUpdate }) => {
                 </div>
                 <div className="flex items-center space-x-1">
                     <button
+                        aria-label={isBookmarked ? "Remove bookmark" : "Bookmark post"}
                         onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
                             bookmarkMutation.mutate({ postId: post._id, isCurrentlyBookmarked: isBookmarked });
                         }}
-                        className={`p-2 rounded-full transition-colors ${isBookmarked ? 'text-primary-600 bg-primary-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'}`}
+                        className={`p-2 rounded-full transition-colors ${isBookmarked ? 'text-primary-700 bg-primary-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'}`}
                     >
                         <Bookmark size={20} className={isBookmarked ? "fill-current" : ""} />
                     </button>
 
                     {isAuthor && (
                         <div className="relative">
-                            <button onClick={() => setShowMenu(!showMenu)} className="text-gray-400 p-2 rounded-full hover:bg-gray-50 transition-colors">
+                            <button aria-label="More options" onClick={() => setShowMenu(!showMenu)} className="text-gray-400 p-2 rounded-full hover:bg-gray-50 transition-colors">
                                 <MoreHorizontal size={20} />
                             </button>
                             {showMenu && (
@@ -530,7 +531,7 @@ const PostCard = ({ post, onPostUpdate }) => {
                 className="block group"
             >
                 <div className="px-4 pb-2">
-                    <h2 className="text-[17px] font-bold text-gray-900 mb-1 group-hover:text-primary-600 transition-colors leading-snug">
+                    <h2 className="text-[17px] font-bold text-gray-900 mb-1 group-hover:text-primary-700 transition-colors leading-snug">
                         {post.title}
                     </h2>
                     <div className="text-gray-700 text-[14px] leading-relaxed mb-3 font-sans prose prose-sm max-w-none prose-p:my-1">
@@ -547,7 +548,7 @@ const PostCard = ({ post, onPostUpdate }) => {
                 {post.hashtags && post.hashtags.length > 0 && (
                     <div className="px-4 pb-3 flex flex-wrap gap-2">
                         {post.hashtags.map((tag, index) => (
-                            <span key={index} className="text-sm font-semibold text-primary-600 hover:underline">#{tag}</span>
+                            <span key={index} className="text-sm font-semibold text-primary-700 hover:underline">#{tag}</span>
                         ))}
                     </div>
                 )}
@@ -574,6 +575,7 @@ const PostCard = ({ post, onPostUpdate }) => {
             <div className="px-4 py-3 border-t border-gray-50 flex items-center justify-between">
                 <div className="flex items-center space-x-6">
                     <button
+                        aria-label={isLiked ? "Unlike post" : "Like post"}
                         onClick={() => likeMutation.mutate({ liked: isLiked })}
                         className={`flex items-center space-x-2 group ${isLiked ? 'text-red-500' : 'text-gray-500 hover:text-red-500'}`}
                     >
@@ -582,6 +584,7 @@ const PostCard = ({ post, onPostUpdate }) => {
                     </button>
 
                     <button
+                        aria-label="View comments"
                         onClick={() => setShowComments(!showComments)}
                         className="flex items-center space-x-2 text-gray-500 hover:text-blue-500 group"
                     >

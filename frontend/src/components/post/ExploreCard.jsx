@@ -112,8 +112,8 @@ const ExploreCard = ({ post }) => {
     const hasImage = !!post.image;
 
     return (
-        <Link
-            to={`/posts/${post._id}`}
+        <div
+            onClick={() => navigate(`/posts/${post._id}`)}
             className="group relative aspect-square overflow-hidden rounded-xl sm:rounded-2xl bg-gray-100 cursor-pointer shadow-sm hover:shadow-xl transition-all duration-300 block"
         >
             {/* Background Content */}
@@ -216,7 +216,7 @@ const ExploreCard = ({ post }) => {
 
                 </div>
             </div>
-        </Link>
+        </div>
     );
 };
 

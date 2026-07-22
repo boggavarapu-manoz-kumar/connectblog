@@ -122,6 +122,8 @@ const ExploreCard = ({ post }) => {
                 <img
                     src={post.image}
                     alt={post.title}
+                    width="600"
+                    height="600"
                     className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                     loading="lazy"
                 />
@@ -145,11 +147,12 @@ const ExploreCard = ({ post }) => {
                 <div className="flex justify-end">
                     {!isAuthor && (
                         <button
+                            aria-label={isFollowing ? "Unfollow user" : "Follow user"}
                             onClick={handleFollow}
                             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all transform active:scale-95 shadow-md ${
                                 isFollowing 
                                 ? 'bg-white/20 hover:bg-white/30 text-white backdrop-blur-md' 
-                                : 'bg-primary-600 hover:bg-primary-700 text-white'
+                                : 'bg-primary-700 hover:bg-primary-800 text-white'
                             }`}
                         >
                             {isFollowing ? (
@@ -181,6 +184,8 @@ const ExploreCard = ({ post }) => {
                     >
                         <img
                             src={post.author.profilePic || `https://ui-avatars.com/api/?name=${encodeURIComponent(post.author.username)}&background=0ea5e9&color=fff&bold=true`}
+                            width="40"
+                            height="40"
                             className="w-8 h-8 sm:w-10 sm:h-10 rounded-full border-2 border-white/80 shadow-md object-cover"
                             alt={post.author.username}
                         />
@@ -192,6 +197,7 @@ const ExploreCard = ({ post }) => {
                     {/* Like & Bookmark Actions */}
                     <div className="flex items-center gap-3">
                         <button
+                            aria-label={isLiked ? "Unlike post" : "Like post"}
                             onClick={handleLike}
                             className="flex items-center gap-1.5 text-white hover:text-red-400 transition-colors"
                         >
@@ -204,6 +210,7 @@ const ExploreCard = ({ post }) => {
                         </button>
 
                         <button
+                            aria-label={post.isBookmarked ? "Remove bookmark" : "Bookmark post"}
                             onClick={handleBookmark}
                             className="text-white hover:text-indigo-300 transition-colors"
                         >

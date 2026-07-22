@@ -50,7 +50,7 @@ const Navbar = () => {
                 <div className="flex justify-between h-16">
                     {/* Logo Section */}
                     <div className="flex items-center">
-                        <Link to="/" className="flex-shrink-0 flex items-center gap-2 group">
+                        <Link to="/" aria-label="Home" className="flex-shrink-0 flex items-center gap-2 group">
                             <div className="bg-gradient-to-tr from-primary-400 to-primary-600 p-2 rounded-xl shadow-lg text-white transform group-hover:scale-110 group-hover:-rotate-6 transition-all duration-300">
                                 <MessageSquare size={20} />
                             </div>
@@ -195,7 +195,7 @@ const Navbar = () => {
                                 </Link>
                                 <Link
                                     to="/register"
-                                    className="bg-primary-600 text-white px-5 py-2.5 rounded-xl hover:bg-primary-700 transition-all shadow-md hover:shadow-lg hover:shadow-primary-100 text-sm font-bold"
+                                    className="bg-primary-700 text-white px-5 py-2.5 rounded-xl hover:bg-primary-800 transition-all shadow-md hover:shadow-lg hover:shadow-primary-100 text-sm font-bold"
                                 >
                                     Get Started
                                 </Link>

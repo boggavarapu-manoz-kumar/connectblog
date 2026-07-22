@@ -462,6 +462,8 @@ const PostCard = ({ post, onPostUpdate }) => {
                             loading="lazy"
                             src={formatImageUrl(post.author?.profilePic)}
                             alt={post.author?.username}
+                            width="40"
+                            height="40"
                             className="h-10 w-10 rounded-full object-cover border border-gray-100 shadow-sm"
                         />
 
@@ -559,8 +561,9 @@ const PostCard = ({ post, onPostUpdate }) => {
                             loading="lazy"
                             src={formatImageUrl(post.image)}
                             alt={post.title}
+                            width="800"
+                            height="500"
                             className="w-full max-h-[500px] object-cover sm:object-contain"
-                            loading="lazy"
 
                             onError={(e) => {
                                 e.target.onerror = null;

@@ -42,7 +42,7 @@ const SearchHero = () => {
                     />
                     <button
                         type="submit"
-                        className="absolute right-3 top-2.5 bottom-2.5 px-8 bg-primary-600 text-white font-bold rounded-[1.5rem] hover:bg-primary-700 transition-all shadow-md hover:shadow-lg active:scale-95"
+                        className="absolute right-3 top-2.5 bottom-2.5 px-8 bg-primary-700 text-white font-bold rounded-[1.5rem] hover:bg-primary-800 transition-all shadow-md hover:shadow-lg active:scale-95"
                     >
                         Search
                     </button>
@@ -57,7 +57,7 @@ const SearchHero = () => {
                         <button
                             key={tag}
                             onClick={() => navigate(`/?search=${encodeURIComponent(tag)}`)}
-                            className="px-4 py-1.5 bg-gray-50 text-gray-600 text-sm font-semibold rounded-full border border-gray-100 hover:bg-white hover:border-primary-500 hover:text-primary-600 hover:shadow-sm transition-all"
+                            className="px-4 py-1.5 bg-gray-50 text-gray-600 text-sm font-semibold rounded-full border border-gray-100 hover:bg-white hover:border-primary-500 hover:text-primary-700 hover:shadow-sm transition-all"
                         >
                             #{tag}
                         </button>

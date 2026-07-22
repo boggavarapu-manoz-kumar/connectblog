@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, useMutation } from '@tanstack/react-query';
+import { useToggleBookmark } from '../../hooks/useToggleBookmark';
 import api from '../../services/api';
 import { Heart, MessageCircle, Share2, MoreHorizontal, Bookmark, Edit, Trash2, Archive, X } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
@@ -21,7 +22,6 @@ const PostCard = ({ post, onPostUpdate }) => {
     const isAuthor = user?._id === (post.author?._id || post.author);
     const isLiked = post.likes?.includes(user?._id);
     const likesCount = post.likes?.length || 0;
-    const isBookmarked = user?.bookmarks?.includes(post._id);
 
     // Like mutation
     const likeMutation = useMutation({
@@ -122,28 +122,8 @@ const PostCard = ({ post, onPostUpdate }) => {
     });
 
     // Bookmark mutation
-    const bookmarkMutation = useMutation({
-        mutationFn: async () => {
-            return api.put(`/users/bookmarks/${post._id}`);
-        },
-        onMutate: async () => {
-            const previousUser = { ...user };
-            const newBookmarks = isBookmarked
-                ? user.bookmarks.filter(id => id !== post._id)
-                : [...(user.bookmarks || []), post._id];
-
-            updateUser({ ...user, bookmarks: newBookmarks });
-            return { previousUser };
-        },
-        onError: (err, variables, context) => {
-            updateUser(context.previousUser);
-            toast.error("Failed to bookmark");
-        },
-        onSuccess: (res) => {
-            toast.success(res.data.message);
-            queryClient.invalidateQueries({ queryKey: ['profile-private'] });
-        }
-    });
+    const bookmarkMutation = useToggleBookmark();
+    const isBookmarked = post?.isBookmarked || false;
 
     // Comment mutation
     const commentMutation = useMutation({
@@ -483,7 +463,7 @@ const PostCard = ({ post, onPostUpdate }) => {
                         onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
-                            bookmarkMutation.mutate();
+                            bookmarkMutation.mutate({ postId: post._id, isCurrentlyBookmarked: isBookmarked });
                         }}
                         className={`p-2 rounded-full transition-colors ${isBookmarked ? 'text-primary-600 bg-primary-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'}`}
                     >

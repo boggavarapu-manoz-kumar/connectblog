@@ -58,12 +58,13 @@ const UserListItem = ({ user, onClose }) => {
                         e.stopPropagation();
                         followMutation.mutate();
                     }}
-                    className={`ml-3 px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${isFollowing
-                        ? 'bg-gray-100 text-gray-900 hover:bg-gray-200'
+                    className={`group ml-3 px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${isFollowing
+                        ? 'bg-gray-100 text-gray-900 hover:bg-red-50 hover:text-red-600 hover:border-red-200 border border-gray-200'
                         : 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm'
                         }`}
                 >
-                    {isFollowing ? 'Following' : 'Follow'}
+                    <span className={isFollowing ? 'block group-hover:hidden' : ''}>{isFollowing ? 'Following' : 'Follow'}</span>
+                    {isFollowing && <span className="hidden group-hover:block">Unfollow</span>}
                 </button>
             )}
         </div>

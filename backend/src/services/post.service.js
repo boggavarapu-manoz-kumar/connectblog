@@ -8,20 +8,32 @@ const mongoose = require('mongoose');
 const attachUserContext = async (posts, userId) => {
     if (!userId || !posts.length) return posts;
     const postIds = posts.map(p => p._id);
-    const [userLikes, userBookmarks] = await Promise.all([
+    const authorIds = posts.map(p => (p.author?._id || p.author)).filter(Boolean);
+
+    const [userLikes, userBookmarks, userFollows] = await Promise.all([
         Like.find({ user: userId, post: { $in: postIds } }).lean(),
-        Bookmark.find({ user: userId, post: { $in: postIds } }).lean()
+        Bookmark.find({ user: userId, post: { $in: postIds } }).lean(),
+        Follow.find({ follower: userId, following: { $in: authorIds } }).lean()
     ]);
     const likedSet = new Set(userLikes.map(l => l.post.toString()));
     const bookmarkedSet = new Set(userBookmarks.map(b => b.post.toString()));
+    const followingSet = new Set(userFollows.map(f => f.following.toString()));
     
-    return posts.map(p => ({
-        ...p,
-        isLiked: likedSet.has(p._id.toString()),
-        isBookmarked: bookmarkedSet.has(p._id.toString()),
-        // Provide backwards compatibility for frontend components
-        likes: likedSet.has(p._id.toString()) ? [userId] : [],
-    }));
+    return posts.map(p => {
+        const authorId = (p.author?._id || p.author)?.toString();
+        const updatedAuthor = typeof p.author === 'object' && p.author !== null 
+            ? { ...p.author, isFollowing: followingSet.has(authorId) } 
+            : p.author;
+
+        return {
+            ...p,
+            author: updatedAuthor,
+            isLiked: likedSet.has(p._id.toString()),
+            isBookmarked: bookmarkedSet.has(p._id.toString()),
+            // Provide backwards compatibility for frontend components
+            likes: likedSet.has(p._id.toString()) ? [userId] : [],
+        };
+    });
 };
 
 const getPosts = async ({ sort, search, author, archived, page = 1, limit = 10, userId }) => {

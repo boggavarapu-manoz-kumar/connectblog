@@ -1,6 +1,6 @@
 const Post = require('../models/Post.model');
 const User = require('../models/User.model');
-const asyncHandler = require('../utils/asyncHandler');
+const asyncHandler = require('express-async-handler');
 
 const generateSitemap = asyncHandler(async (req, res) => {
     // 1. Fetch public data

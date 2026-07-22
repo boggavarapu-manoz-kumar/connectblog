@@ -2,54 +2,105 @@ const mongoose = require('mongoose');
 const User = require('../models/User.model');
 const Post = require('../models/Post.model');
 const bcrypt = require('bcryptjs');
+const { faker } = require('@faker-js/faker');
 
 const seedData = async () => {
     try {
         const userCount = await User.countDocuments();
-        const postCount = await Post.countDocuments();
-
-        if (userCount > 0 && postCount > 0) {
-            console.log('Database already has users and posts, skipping seed.');
+        if (userCount >= 50) {
+            console.log('Database already has enough users, skipping seed.');
             return;
         }
 
-        console.log('Seeding initial data...');
+        console.log('Clearing existing data...');
+        await User.deleteMany({});
+        await Post.deleteMany({});
 
-
-        // Create a demo user
+        console.log('Generating 50 realistic users...');
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash('password123', salt);
 
-        const demoUser = await User.create({
-            username: 'demo_user',
-            email: 'demo@example.com',
-            password: 'password123', // Model pre-save will hash it too, but just in case
-            bio: 'Welcome to ConnectBlog! This is a demo account.',
-            profilePic: 'https://ui-avatars.com/api/?name=Demo+User&background=0ea5e9&color=fff&bold=true'
-        });
+        const usersData = [];
+        const existingUsernames = new Set();
+        const existingEmails = new Set();
 
-        console.log('User created:', demoUser.username);
+        for (let i = 0; i < 50; i++) {
+            let firstName = faker.person.firstName();
+            let lastName = faker.person.lastName();
+            let username = faker.internet.username({ firstName, lastName }).toLowerCase().replace(/[^a-z0-9]/g, '');
+            let email = faker.internet.email({ firstName, lastName }).toLowerCase();
 
-        // Create some posts
-        await Post.create([
-            {
-                title: 'Welcome to ConnectBlog!',
-                content: 'This is the first post on the platform. ConnectBlog is a modern, real-world blogging platform for everyone.',
-                author: demoUser._id,
-                image: 'https://images.unsplash.com/photo-1499750310107-5fef28a66643?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80',
-                hashtags: ['welcome', 'connectblog', 'tech']
-            },
-            {
-                title: 'Exploring the Real World',
-                content: 'Building software that works seamlessly is the goal of every developer. ConnectBlog aims to provide that experience.',
-                author: demoUser._id,
-                image: 'https://images.unsplash.com/photo-1488190211105-8b0e65b80b4e?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80',
-                hashtags: ['development', 'software', 'smooth']
+            // Ensure uniqueness
+            while (existingUsernames.has(username)) {
+                username += Math.floor(Math.random() * 100);
             }
-        ]);
+            while (existingEmails.has(email)) {
+                email = `alt_${Math.floor(Math.random() * 1000)}_${email}`;
+            }
 
-        console.log('Demo posts created!');
-        console.log('Seeding complete! Log in with: demo@example.com / password123');
+            existingUsernames.add(username);
+            existingEmails.add(email);
+
+            usersData.push({
+                username,
+                email,
+                password: hashedPassword,
+                name: `${firstName} ${lastName}`,
+                bio: faker.person.bio(),
+                profilePic: faker.image.avatar(),
+                followers: [],
+                following: [],
+                bookmarks: []
+            });
+        }
+
+        // Insert users
+        const insertedUsers = await User.insertMany(usersData);
+        console.log('Users created successfully.');
+
+        console.log('Generating relationships (followers/following)...');
+        for (let user of insertedUsers) {
+            // Pick a random number of followers and following (between 5 and 20)
+            const numFollowing = faker.number.int({ min: 5, max: 20 });
+            
+            // Randomly pick other users to follow
+            const shuffledUsers = [...insertedUsers].sort(() => 0.5 - Math.random());
+            const usersToFollow = shuffledUsers.filter(u => u._id.toString() !== user._id.toString()).slice(0, numFollowing);
+
+            user.following = usersToFollow.map(u => u._id);
+            await user.save();
+
+            // Update followers of those users
+            for (let targetUser of usersToFollow) {
+                await User.findByIdAndUpdate(targetUser._id, {
+                    $addToSet: { followers: user._id }
+                });
+            }
+        }
+        console.log('Relationships established.');
+
+        console.log('Generating realistic posts...');
+        const postsData = [];
+        for (let i = 0; i < 150; i++) {
+            // Pick a random author
+            const author = faker.helpers.arrayElement(insertedUsers);
+
+            postsData.push({
+                title: faker.lorem.sentence({ min: 4, max: 8 }),
+                content: faker.lorem.paragraphs({ min: 2, max: 5 }),
+                author: author._id,
+                image: faker.image.urlLoremFlickr({ category: 'technology,nature,abstract', width: 800, height: 600 }),
+                hashtags: Array.from({ length: faker.number.int({ min: 2, max: 5 }) }).map(() => faker.word.sample()),
+                likes: faker.helpers.arrayElements(insertedUsers.map(u => u._id), faker.number.int({ min: 0, max: 30 })),
+                comments: []
+            });
+        }
+
+        await Post.insertMany(postsData);
+        console.log('150 posts created successfully.');
+
+        console.log('Database seeding complete! All dummy data is highly realistic.');
+        console.log('You can log in as any user with password: password123');
 
     } catch (error) {
         console.error('Error seeding data:', error);

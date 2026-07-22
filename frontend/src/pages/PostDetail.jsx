@@ -177,8 +177,7 @@ const PostDetail = () => {
     }
 
     const isAuthor = user?._id === (post?.author?._id || post?.author);
-    const isLiked = user && post?.likes?.includes(user._id);
-    const likesCount = post?.likes?.length || 0;
+    const likesCount = post?.likeCount || 0;
 
     return (
         <div className="min-h-screen bg-[#f3f2ef] lg:bg-[#fafafa] py-0 lg:py-6 font-sans flex flex-col justify-center">

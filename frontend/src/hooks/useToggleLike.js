@@ -15,14 +15,16 @@ export const useToggleLike = () => {
                 queryClient.cancelQueries({ queryKey: ['post', postId] }),
                 queryClient.cancelQueries({ queryKey: ['posts-feed'] }),
                 queryClient.cancelQueries({ queryKey: ['profile-posts'] }),
-                queryClient.cancelQueries({ queryKey: ['profile-private'] })
+                queryClient.cancelQueries({ queryKey: ['profile-private'] }),
+                queryClient.cancelQueries({ queryKey: ['explore-trending'] })
             ]);
 
             const snapshots = {
                 singlePost: queryClient.getQueryData(['post', postId]),
                 feeds: queryClient.getQueriesData({ queryKey: ['posts-feed'] }),
                 profilePosts: queryClient.getQueriesData({ queryKey: ['profile-posts'] }),
-                profilePrivate: queryClient.getQueriesData({ queryKey: ['profile-private'] })
+                profilePrivate: queryClient.getQueriesData({ queryKey: ['profile-private'] }),
+                explore: queryClient.getQueriesData({ queryKey: ['explore-trending'] })
             };
 
             const updatePostLikes = (p) => {
@@ -55,6 +57,11 @@ export const useToggleLike = () => {
                 return { ...old, posts: old.posts.map(updatePostLikes) };
             });
 
+            queryClient.setQueriesData({ queryKey: ['explore-trending'] }, old => {
+                if (!old || !old.posts) return old;
+                return { ...old, posts: old.posts.map(updatePostLikes) };
+            });
+
             queryClient.setQueriesData({ queryKey: ['profile-private'] }, old => {
                 if (!old) return old;
                 return {
@@ -78,6 +85,9 @@ export const useToggleLike = () => {
                 context.snapshots.profilePrivate.forEach(([queryKey, data]) => {
                     queryClient.setQueryData(queryKey, data);
                 });
+                context.snapshots.explore.forEach(([queryKey, data]) => {
+                    queryClient.setQueryData(queryKey, data);
+                });
             }
             toast.error("Failed to update like status");
         },
@@ -85,6 +95,7 @@ export const useToggleLike = () => {
             queryClient.invalidateQueries({ queryKey: ['post', variables.postId] });
             queryClient.invalidateQueries({ queryKey: ['posts-feed'] });
             queryClient.invalidateQueries({ queryKey: ['profile-posts'] });
+            queryClient.invalidateQueries({ queryKey: ['explore-trending'] });
         }
     });
 };

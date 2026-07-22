@@ -16,8 +16,8 @@ const ExploreCard = ({ post }) => {
     const { mutate: followUser } = useFollowUser();
 
     const isAuthor = user?._id === (post.author?._id || post.author);
-    const isLiked = post.likes?.includes(user?._id);
-    const likesCount = post.likes?.length || 0;
+    const isLiked = post?.isLiked || false;
+    const likesCount = post?.likeCount || 0;
     const isFollowing = post.isFollowing;
 
     // Like mutation (identical optimistic logic as PostCard)
@@ -42,10 +42,11 @@ const ExploreCard = ({ post }) => {
 
             const updatePostLikes = (p) => {
                 if (p._id !== post._id && p.id !== post._id) return p;
-                const newLikes = liked
-                    ? (p.likes || []).filter(id => id.toString() !== userId.toString())
-                    : [...(p.likes || []), userId];
-                return { ...p, likes: newLikes };
+                const currentIsLiked = p.isLiked !== undefined ? p.isLiked : false;
+                const currentCount = p.likeCount !== undefined ? p.likeCount : 0;
+                const newIsLiked = !liked;
+                const newCount = newIsLiked ? currentCount + 1 : Math.max(0, currentCount - 1);
+                return { ...p, isLiked: newIsLiked, likeCount: newCount };
             };
 
             queryClient.setQueriesData({ queryKey: ['explore-trending'] }, old => {

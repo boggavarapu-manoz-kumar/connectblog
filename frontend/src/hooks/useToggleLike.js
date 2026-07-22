@@ -37,16 +37,7 @@ export const useToggleLike = () => {
                 
                 const newIsLiked = !isCurrentlyLiked;
                 const newCount = newIsLiked ? currentCount + 1 : Math.max(0, currentCount - 1);
-
-                const userId = user?._id || user?.id;
-                let newLikes = p.likes || [];
-                if (userId) {
-                    newLikes = newIsLiked 
-                        ? [...newLikes, userId] 
-                        : newLikes.filter(id => id.toString() !== userId.toString());
-                }
-
-                return { ...p, isLiked: newIsLiked, likeCount: newCount, likes: newLikes };
+                return { ...p, isLiked: newIsLiked, likeCount: newCount };
             };
 
             queryClient.setQueryData(['post', postId], old => (old ? updatePostLikes(old) : old));

@@ -7,7 +7,6 @@ import toast from 'react-hot-toast';
 import { Image, Send, X } from 'lucide-react';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
-import imageCompression from 'browser-image-compression';
 import { formatImageUrl } from '../utils/formatUrl';
 
 
@@ -19,49 +18,8 @@ const CreatePost = () => {
     const [title, setTitle] = useState('');
     const [content, setContent] = useState('');
     const [imageUrl, setImageUrl] = useState('');
-    const [uploadingImage, setUploadingImage] = useState(false);
     const [hashtags, setHashtags] = useState([]);
     const [tagInput, setTagInput] = useState('');
-
-    const handleImageUpload = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        if (!file.type.startsWith('image/')) {
-            toast.error('Please upload an image file');
-            return;
-        }
-
-        const toastId = toast.loading('Uploading image...');
-        setUploadingImage(true);
-
-        try {
-            // Light compression — just reduce payload size for faster upload.
-            // Cloudinary handles quality optimisation on their end automatically.
-            const compressionOptions = {
-                maxSizeMB: 1.5,          // 1.5MB max (was 0.8 — over-compressing wastes time)
-                maxWidthOrHeight: 1920,   // Keep decent resolution (Cloudinary will resize)
-                useWebWorker: true,       // Non-blocking — runs in background thread
-                initialQuality: 0.85      // High quality — Cloudinary applies smart compression
-            };
-
-            const compressedFile = await imageCompression(file, compressionOptions);
-            const formData = new FormData();
-            formData.append('image', compressedFile);
-
-            const { data } = await api.post('/upload', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' },
-                timeout: 30000 // 30s timeout — don't hang forever on slow connection
-            });
-
-            setImageUrl(data.url);
-            toast.success('Image ready!', { id: toastId });
-        } catch (error) {
-            toast.error(error.response?.data?.message || 'Upload failed. Try again.', { id: toastId });
-        } finally {
-            setUploadingImage(false);
-        }
-    };
 
     const createPostMutation = useMutation({
         mutationFn: async (postData) => {
@@ -159,25 +117,12 @@ const CreatePost = () => {
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Post Image</label>
                         <div className="flex items-center space-x-4">
-                            <label className="cursor-pointer flex items-center justify-center space-x-2 px-4 py-2.5 bg-gray-50 border-2 border-dashed border-gray-300 rounded-xl hover:border-primary-400 transition-all">
-                                <Image size={20} className="text-primary-500" />
-                                <span className="font-semibold text-gray-600 text-sm">
-                                    {uploadingImage ? 'Uploading...' : 'Select Image'}
-                                </span>
-                                <input
-                                    type="file"
-                                    accept="image/*"
-                                    className="hidden"
-                                    onChange={handleImageUpload}
-                                    disabled={uploadingImage}
-                                />
-                            </label>
                             <input
                                 type="url"
                                 value={imageUrl}
                                 onChange={(e) => setImageUrl(e.target.value)}
-                                placeholder="Or paste Image URL..."
-                                className="flex-1 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl outline-none text-sm"
+                                placeholder="Paste Image URL..."
+                                className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl outline-none text-sm transition-colors focus:border-primary-500 focus:bg-white"
                             />
                         </div>
 

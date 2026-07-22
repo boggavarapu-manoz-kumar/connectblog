@@ -129,7 +129,12 @@ const Profile = () => {
                 const newFollowers = isFollowing
                     ? (old.followers || []).filter(f => f.toString() !== myId.toString())
                     : [...(old.followers || []), myId];
-                return { ...old, followers: newFollowers };
+                return { 
+                    ...old, 
+                    followers: newFollowers,
+                    followerCount: isFollowing ? Math.max(0, (old.followerCount || 0) - 1) : (old.followerCount || 0) + 1,
+                    isFollowing: !isFollowing
+                };
             });
 
             // 4. Update My Following
@@ -139,7 +144,11 @@ const Profile = () => {
                     const newFollowing = isFollowing
                         ? (old.following || []).filter(f => f.toString() !== targetUserId.toString())
                         : [...(old.following || []), targetUserId];
-                    return { ...old, following: newFollowing };
+                    return { 
+                        ...old, 
+                        following: newFollowing,
+                        followingCount: isFollowing ? Math.max(0, (old.followingCount || 0) - 1) : (old.followingCount || 0) + 1 
+                    };
                 });
             }
 
@@ -290,9 +299,10 @@ const Profile = () => {
                                     <button
                                         onClick={() => followMutation.mutate({ isFollowing })}
                                         disabled={followMutation.isPending}
-                                        className={`px-6 py-1.5 text-sm font-bold rounded-lg transition-all ${isFollowing ? 'bg-gray-100 text-gray-900 hover:bg-gray-200 border border-gray-200' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm'}`}
+                                        className={`group px-6 py-1.5 text-sm font-bold rounded-lg transition-all ${isFollowing ? 'bg-gray-100 text-gray-900 hover:bg-red-50 hover:text-red-600 hover:border-red-200 border border-gray-200' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm'}`}
                                     >
-                                        {isFollowing ? 'Following' : 'Follow'}
+                                        <span className={isFollowing ? 'block group-hover:hidden' : ''}>{isFollowing ? 'Following' : 'Follow'}</span>
+                                        {isFollowing && <span className="hidden group-hover:block">Unfollow</span>}
                                     </button>
                                 )}
                             </div>

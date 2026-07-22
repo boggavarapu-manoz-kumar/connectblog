@@ -15,6 +15,9 @@ export const useFollowUser = () => {
             queryClient.invalidateQueries({ queryKey: ['followers'] });
             queryClient.invalidateQueries({ queryKey: ['following'] });
             queryClient.invalidateQueries({ queryKey: ['users-search'] });
+            queryClient.invalidateQueries({ queryKey: ['post'] });
+            queryClient.invalidateQueries({ queryKey: ['posts-feed'] });
+            queryClient.invalidateQueries({ queryKey: ['explore-trending'] });
         },
         onError: () => {
             toast.error("Action failed. Please try again.");

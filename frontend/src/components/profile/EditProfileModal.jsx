@@ -70,10 +70,10 @@ const EditProfileModal = ({ isOpen, onClose, userProfile, onProfileUpdate }) => 
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-0">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4">
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={onClose}></div>
 
-            <div className="relative bg-white sm:rounded-xl shadow-2xl w-full max-w-[500px] h-[100vh] sm:h-auto sm:max-h-[90vh] flex flex-col transform transition-all">
+            <div className="relative bg-white sm:rounded-xl shadow-2xl w-full sm:max-w-[500px] h-[100dvh] sm:h-auto sm:max-h-[90dvh] flex flex-col transform transition-all">
                 
                 {/* Header */}
                 <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 shrink-0 bg-white sm:rounded-t-xl">

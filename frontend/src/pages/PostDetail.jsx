@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 import { useToggleLike } from '../hooks/useToggleLike';
+import { useFollowUser } from '../hooks/useFollowUser';
+import { useToggleBookmark } from '../hooks/useToggleBookmark';
 import { ArrowLeft, Heart, MessageCircle, Share2, Loader2, MoreHorizontal, Edit, Trash2, Archive, EyeOff, Eye, Bookmark } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -43,26 +45,12 @@ const PostDetail = () => {
     // Like mutation
     const likeMutation = useToggleLike();
 
-    // Bookmark mutation
-    const isBookmarked = user?.bookmarks?.includes(id);
-    const bookmarkMutation = useMutation({
-        mutationFn: async () => {
-            return api.put(`/users/bookmarks/${id}`);
-        },
-        onMutate: async () => {
-            const previousUser = { ...user };
-            const newBookmarks = isBookmarked
-                ? user.bookmarks.filter(bId => bId !== id)
-                : [...(user.bookmarks || []), id];
+    // Follow mutation
+    const followMutation = useFollowUser();
 
-            updateUser({ ...user, bookmarks: newBookmarks });
-            return { previousUser };
-        },
-        onError: (err, variables, context) => {
-            updateUser(context.previousUser);
-            toast.error('Failed to save post');
-        }
-    });
+    // Bookmark mutation
+    const bookmarkMutation = useToggleBookmark();
+    const isBookmarked = post?.isBookmarked || false;
 
     // Comment Mutation (Fully Optimistic)
     const commentMutation = useMutation({
@@ -230,10 +218,23 @@ const PostDetail = () => {
                                 <Link to={`/profile/${post.author?._id}`}>
                                     <img src={formatImageUrl(post.author?.profilePic)} alt={post.author?.username} className="w-9 h-9 rounded-full object-cover border border-gray-200" />
                                 </Link>
-                                <div className="flex flex-col">
+                                <div className="flex items-center space-x-2">
                                     <Link to={`/profile/${post.author?._id}`} className="font-semibold text-[14px] text-gray-900 hover:text-gray-500 leading-tight">
                                         {post.author?.username || 'User'}
                                     </Link>
+                                    {!isAuthor && user && (
+                                        <>
+                                            <span className="text-gray-300 text-xs">•</span>
+                                            <button 
+                                                onClick={() => followMutation.mutate({ userId: post.author?._id, isFollowing: post.author?.isFollowing })}
+                                                className={`group text-[13px] font-bold transition-all ${post.author?.isFollowing ? 'text-gray-500 hover:text-red-500' : 'text-blue-500 hover:text-blue-700'}`}
+                                                disabled={followMutation.isPending}
+                                            >
+                                                <span className={post.author?.isFollowing ? 'group-hover:hidden' : ''}>{post.author?.isFollowing ? 'Following' : 'Follow'}</span>
+                                                {post.author?.isFollowing && <span className="hidden group-hover:inline">Unfollow</span>}
+                                            </button>
+                                        </>
+                                    )}
                                 </div>
                             </div>
                             {isAuthor && (
@@ -330,7 +331,7 @@ const PostDetail = () => {
                             {/* Actions */}
                             <div className="px-4 pt-3 pb-2 flex items-center justify-between">
                                 <div className="flex items-center gap-4">
-                                    <button onClick={() => likeMutation.mutate(isLiked)} className="hover:opacity-50 transition-opacity">
+                                    <button onClick={() => likeMutation.mutate({ postId: id, isCurrentlyLiked: isLiked })} className="hover:opacity-50 transition-opacity">
                                         <Heart size={26} className={isLiked ? "fill-red-500 text-red-500" : "text-gray-900"} />
                                     </button>
                                     <button onClick={() => document.getElementById('comment-input')?.focus()} className="hover:opacity-50 transition-opacity text-gray-900">
@@ -340,8 +341,8 @@ const PostDetail = () => {
                                         <Share2 size={26} />
                                     </button>
                                 </div>
-                                <button onClick={() => bookmarkMutation.mutate()} className="hover:opacity-50 transition-opacity text-gray-900">
-                                    <Bookmark size={26} className={isBookmarked ? "fill-gray-900" : ""} />
+                                <button onClick={() => bookmarkMutation.mutate({ postId: id, isCurrentlyBookmarked: isBookmarked })} className="hover:opacity-50 transition-opacity text-gray-900">
+                                    <Bookmark size={26} className={isBookmarked ? "fill-gray-900 text-gray-900" : "text-gray-900"} />
                                 </button>
                             </div>
 

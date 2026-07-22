@@ -7,16 +7,30 @@ const { invalidateCache } = require('../utils/cache');
 const { sendNotification } = require('../utils/notify');
 const asyncHandler = require('express-async-handler');
 
-// Helper to attach follow status
+// Helper to attach follow status and dynamic follower count
 const attachFollowContext = async (users, currentUser) => {
-    if (!currentUser || !users.length) return users;
+    if (!users.length) return users;
     const userIds = users.map(u => u._id);
-    const following = await Follow.find({ follower: currentUser, following: { $in: userIds } }).lean();
-    const followingSet = new Set(following.map(f => f.following.toString()));
+    
+    // Dynamically calculate actual follower counts
+    const followerCounts = await Follow.aggregate([
+        { $match: { following: { $in: userIds } } },
+        { $group: { _id: "$following", count: { $sum: 1 } } }
+    ]);
+    
+    const countMap = new Map();
+    followerCounts.forEach(f => countMap.set(f._id.toString(), f.count));
+
+    let followingSet = new Set();
+    if (currentUser) {
+        const following = await Follow.find({ follower: currentUser, following: { $in: userIds } }).lean();
+        followingSet = new Set(following.map(f => f.following.toString()));
+    }
     
     return users.map(u => ({
         ...u,
-        isFollowing: followingSet.has(u._id.toString())
+        followerCount: countMap.get(u._id.toString()) || 0,
+        isFollowing: currentUser ? followingSet.has(u._id.toString()) : false
     }));
 };
 

@@ -2,6 +2,7 @@ const Post = require('../models/Post.model');
 const User = require('../models/User.model');
 const Like = require('../models/Like.model');
 const Bookmark = require('../models/Bookmark.model');
+const Follow = require('../models/Follow.model');
 const mongoose = require('mongoose');
 
 // Helper function to get liked and bookmarked status for a list of posts

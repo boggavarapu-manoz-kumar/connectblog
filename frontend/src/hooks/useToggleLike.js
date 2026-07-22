@@ -1,9 +1,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 import toast from 'react-hot-toast';
+import { useAuth } from '../context/AuthContext';
 
 export const useToggleLike = () => {
     const queryClient = useQueryClient();
+    const { user } = useAuth();
 
     return useMutation({
         mutationFn: async ({ postId, isCurrentlyLiked }) => {
@@ -31,12 +33,20 @@ export const useToggleLike = () => {
                 if (!p || (p._id !== postId && postId !== p.id)) return p;
                 
                 const currentIsLiked = p.isLiked !== undefined ? p.isLiked : false;
-                const currentCount = p.likeCount !== undefined ? p.likeCount : 0;
+                const currentCount = p.likeCount !== undefined ? p.likeCount : (p.likes?.length || 0);
                 
                 const newIsLiked = !isCurrentlyLiked;
                 const newCount = newIsLiked ? currentCount + 1 : Math.max(0, currentCount - 1);
 
-                return { ...p, isLiked: newIsLiked, likeCount: newCount };
+                const userId = user?._id || user?.id;
+                let newLikes = p.likes || [];
+                if (userId) {
+                    newLikes = newIsLiked 
+                        ? [...newLikes, userId] 
+                        : newLikes.filter(id => id.toString() !== userId.toString());
+                }
+
+                return { ...p, isLiked: newIsLiked, likeCount: newCount, likes: newLikes };
             };
 
             queryClient.setQueryData(['post', postId], old => (old ? updatePostLikes(old) : old));

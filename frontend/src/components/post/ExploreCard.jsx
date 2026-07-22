@@ -179,18 +179,18 @@ const ExploreCard = ({ post }) => {
                         onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
-                            navigate(`/profile/${post.author.username}`);
+                            if(post.author?.username) navigate(`/profile/${post.author.username}`);
                         }}
                     >
                         <img
-                            src={post.author.profilePic || `https://ui-avatars.com/api/?name=${encodeURIComponent(post.author.username)}&background=0ea5e9&color=fff&bold=true`}
+                            src={post.author?.profilePic || `https://ui-avatars.com/api/?name=${encodeURIComponent(post.author?.username || 'user')}&background=0ea5e9&color=fff&bold=true`}
                             width="40"
                             height="40"
                             className="w-8 h-8 sm:w-10 sm:h-10 rounded-full border-2 border-white/80 shadow-md object-cover"
-                            alt={post.author.username}
+                            alt={post.author?.username || 'user'}
                         />
                         <span className="text-white font-bold text-sm truncate drop-shadow-md hidden sm:block">
-                            @{post.author.username}
+                            @{post.author?.username || 'unknown'}
                         </span>
                     </div>
 

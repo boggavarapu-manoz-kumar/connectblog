@@ -248,7 +248,7 @@ const Profile = () => {
             <Helmet>
                 <title>{`${profileUser.username} (@${profileUser.username}) | ConnectBlog`}</title>
                 <meta name="description" content={profileUser.bio || `Check out ${profileUser.username}'s posts on ConnectBlog.`} />
-                <link rel="canonical" href={`https://connectblog.site/profile/${id}`} />
+                <link rel="canonical" href={`https://connectblog.site/profile/${targetUserId}`} />
                 {profileUser.profilePic && <meta property="og:image" content={formatImageUrl(profileUser.profilePic)} />}
             </Helmet>
 

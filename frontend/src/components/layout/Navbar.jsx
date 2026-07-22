@@ -69,14 +69,16 @@ const Navbar = () => {
 
                     {/* Navbar Action Icons */}
                     <div className="flex items-center space-x-2 sm:space-x-4">
-                        <button
-                            onClick={() => setIsMetricsModalOpen(true)}
-                            className="p-2 text-green-500 hover:text-green-600 hover:bg-green-50 rounded-full transition-colors mr-1 sm:mr-0 relative"
-                            title="Server Status & Metrics"
-                        >
-                            <Server size={20} strokeWidth={2.5} />
-                            <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white shadow-sm animate-pulse"></span>
-                        </button>
+                        {user?.role === 'admin' && (
+                            <button
+                                onClick={() => setIsMetricsModalOpen(true)}
+                                className="p-2 text-green-500 hover:text-green-600 hover:bg-green-50 rounded-full transition-colors mr-1 sm:mr-0 relative"
+                                title="Server Status & Metrics"
+                            >
+                                <Server size={20} strokeWidth={2.5} />
+                                <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white shadow-sm animate-pulse"></span>
+                            </button>
+                        )}
 
                         <Link
                             to="/explore"

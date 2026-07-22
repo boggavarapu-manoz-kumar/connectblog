@@ -48,9 +48,9 @@ const PostDetail = () => {
     // Follow mutation
     const followMutation = useFollowUser();
 
-    // Bookmark mutation
     const bookmarkMutation = useToggleBookmark();
     const isBookmarked = post?.isBookmarked || false;
+    const isLiked = post?.isLiked || false;
 
     // Comment Mutation (Fully Optimistic)
     const commentMutation = useMutation({

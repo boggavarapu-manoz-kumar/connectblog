@@ -78,7 +78,7 @@ const Explore = () => {
 
             {/* Instagram Style Square Grid */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-4 md:gap-6">
-                {posts.map((post, index) => {
+                {posts.filter(post => post && post._id).map((post, index) => {
                     if (posts.length === index + 1) {
                         return (
                             <div ref={lastPostElementRef} key={post._id}>

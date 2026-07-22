@@ -190,7 +190,7 @@ const Home = () => {
                             </div>
                         ) : (
                             <div className="space-y-8">
-                                {allPosts.map((post, index) => {
+                                {allPosts.filter(post => post && post._id).map((post, index) => {
                                     const prefetchProfile = () => {
                                         const authorId = post.author?._id || post.author;
                                         queryClient.prefetchQuery({

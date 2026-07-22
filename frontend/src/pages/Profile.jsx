@@ -8,7 +8,7 @@ import { Settings, Loader2, Link as LinkIcon, Bookmark, Grid, Archive, AlertCirc
 import toast from 'react-hot-toast';
 import EditProfileModal from '../components/profile/EditProfileModal';
 import UserListModal from '../components/profile/UserListModal';
-import SettingsModal from '../components/profile/SettingsModal';
+
 import { formatImageUrl } from '../utils/formatUrl';
 import { Helmet } from 'react-helmet-async';
 

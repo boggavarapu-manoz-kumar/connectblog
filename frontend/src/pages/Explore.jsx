@@ -1,8 +1,8 @@
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import api from '../services/api';
 import { Loader2, Flame, Hash } from 'lucide-react';
-import { useEffect } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import ExploreCard from '../components/post/ExploreCard';
 import { Helmet } from 'react-helmet-async';
 
@@ -11,16 +11,39 @@ const Explore = () => {
         window.scrollTo(0, 0);
     }, []);
 
-    const { data, isLoading } = useQuery({
+    const {
+        data,
+        isLoading,
+        fetchNextPage,
+        hasNextPage,
+        isFetchingNextPage,
+        status,
+    } = useInfiniteQuery({
         queryKey: ['explore-trending'],
-        queryFn: async () => {
-            const { data } = await api.get('/posts?sort=trending&limit=10');
+        queryFn: async ({ pageParam = 1 }) => {
+            const { data } = await api.get(`/posts?sort=trending&limit=16&page=${pageParam}`);
             return data;
         },
-        staleTime: 1000 * 60 * 10, // 10 minutes (Best Ever)
+        initialPageParam: 1,
+        getNextPageParam: (lastPage) => {
+            return lastPage.hasMore ? lastPage.currentPage + 1 : undefined;
+        },
+        staleTime: 1000 * 60 * 10, // 10 minutes
     });
 
-    const posts = data?.posts || [];
+    const observer = useRef();
+    const lastPostElementRef = useCallback(node => {
+        if (status === 'pending' || isFetchingNextPage) return;
+        if (observer.current) observer.current.disconnect();
+        observer.current = new IntersectionObserver(entries => {
+            if (entries[0].isIntersecting && hasNextPage) {
+                fetchNextPage();
+            }
+        });
+        if (node) observer.current.observe(node);
+    }, [status, isFetchingNextPage, hasNextPage, fetchNextPage]);
+
+    const posts = data?.pages.flatMap(page => page.posts) || [];
 
     if (isLoading) {
         return (
@@ -55,10 +78,24 @@ const Explore = () => {
 
             {/* Instagram Style Square Grid */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-4 md:gap-6">
-                {posts.map((post) => (
-                    <ExploreCard key={post._id} post={post} />
-                ))}
+                {posts.map((post, index) => {
+                    if (posts.length === index + 1) {
+                        return (
+                            <div ref={lastPostElementRef} key={post._id}>
+                                <ExploreCard post={post} />
+                            </div>
+                        );
+                    }
+                    return <ExploreCard key={post._id} post={post} />;
+                })}
             </div>
+            
+            {/* Infinite Load Spinner */}
+            {isFetchingNextPage && (
+                <div className="flex justify-center mt-8 py-4">
+                    <Loader2 className="w-8 h-8 text-primary-500 animate-spin" />
+                </div>
+            )}
 
             {posts.length === 0 && (
                 <div className="text-center py-20 bg-white rounded-3xl border border-gray-100 shadow-sm">

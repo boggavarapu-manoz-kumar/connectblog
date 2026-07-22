@@ -7,6 +7,7 @@ import { Loader2, SearchX, ArrowLeft, User as UserIcon } from 'lucide-react';
 import SearchHero from '../components/common/SearchHero';
 import SkeletonPost from '../components/common/SkeletonPost';
 import { formatImageUrl } from '../utils/formatUrl';
+import { Helmet } from 'react-helmet-async';
 
 
 const Home = () => {
@@ -75,6 +76,12 @@ const Home = () => {
 
     return (
         <div className="pb-12">
+            <Helmet>
+                <title>{searchQuery ? `Search results for "${searchQuery}" | ConnectBlog` : 'Home | ConnectBlog'}</title>
+                <meta name="description" content="Discover the latest posts, ideas, and stories on ConnectBlog." />
+                <link rel="canonical" href={searchQuery ? `https://connectblog.site/?search=${searchQuery}` : "https://connectblog.site/"} />
+            </Helmet>
+
             {!searchQuery && <SearchHero />}
 
             <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">

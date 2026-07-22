@@ -59,7 +59,7 @@ app.use('/api/users', require('./routes/user.routes'));
 app.use('/api/posts', require('./routes/post.routes'));
 app.use('/api/upload', require('./routes/upload.routes'));
 app.use('/api/notifications', require('./routes/notification.routes'));
-
+app.use('/api/seo', require('./routes/seo.routes'));
 // Basic Status Route
 app.get('/', (req, res) => {
     res.send('ConnectBlog API is running...');

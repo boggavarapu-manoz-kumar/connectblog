@@ -4,6 +4,7 @@ import api from '../services/api';
 import { Loader2, Flame, Hash } from 'lucide-react';
 import { useEffect } from 'react';
 import ExploreCard from '../components/post/ExploreCard';
+import { Helmet } from 'react-helmet-async';
 
 const Explore = () => {
     useEffect(() => {
@@ -32,6 +33,12 @@ const Explore = () => {
 
     return (
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+            <Helmet>
+                <title>Explore Trending Posts | ConnectBlog</title>
+                <meta name="description" content="Discover the most popular discussions, viral posts, and creative content on ConnectBlog." />
+                <link rel="canonical" href="https://connectblog.site/explore" />
+            </Helmet>
+
             {/* Header Content */}
             <div className="mb-10 text-center sm:text-left">
                 <div className="inline-flex items-center space-x-2 bg-gradient-to-r from-orange-100 to-red-100 text-red-600 px-4 py-1.5 rounded-full font-bold text-sm mb-4">

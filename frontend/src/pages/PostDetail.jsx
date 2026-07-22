@@ -188,6 +188,22 @@ const PostDetail = () => {
                 {post?.image && <meta property="og:image" content={formatImageUrl(post.image)} />}
                 <meta property="og:type" content="article" />
                 <meta name="twitter:card" content="summary_large_image" />
+                <link rel="canonical" href={`https://connectblog.site/posts/${id}`} />
+                <script type="application/ld+json">
+                    {JSON.stringify({
+                        "@context": "https://schema.org",
+                        "@type": "Article",
+                        "headline": post?.title,
+                        "image": post?.image ? [formatImageUrl(post.image)] : [],
+                        "datePublished": post?.createdAt,
+                        "dateModified": post?.updatedAt || post?.createdAt,
+                        "author": [{
+                            "@type": "Person",
+                            "name": post?.author?.username,
+                            "url": `https://connectblog.site/profile/${post?.author?._id}`
+                        }]
+                    })}
+                </script>
             </Helmet>
 
             <div className="w-full max-w-[1100px] mx-auto lg:px-4 flex flex-col h-full lg:h-[calc(100vh-120px)] lg:max-h-[850px]">

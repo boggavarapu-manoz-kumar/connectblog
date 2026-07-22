@@ -8,7 +8,9 @@ import { Settings, Loader2, Link as LinkIcon, Bookmark, Grid, Archive, AlertCirc
 import toast from 'react-hot-toast';
 import EditProfileModal from '../components/profile/EditProfileModal';
 import UserListModal from '../components/profile/UserListModal';
+import SettingsModal from '../components/profile/SettingsModal';
 import { formatImageUrl } from '../utils/formatUrl';
+import { Helmet } from 'react-helmet-async';
 
 
 const Profile = () => {
@@ -243,6 +245,13 @@ const Profile = () => {
 
     return (
         <div className="min-h-screen bg-gray-50 pt-8 pb-12">
+            <Helmet>
+                <title>{`${profileUser.username} (@${profileUser.username}) | ConnectBlog`}</title>
+                <meta name="description" content={profileUser.bio || `Check out ${profileUser.username}'s posts on ConnectBlog.`} />
+                <link rel="canonical" href={`https://connectblog.site/profile/${id}`} />
+                {profileUser.profilePic && <meta property="og:image" content={formatImageUrl(profileUser.profilePic)} />}
+            </Helmet>
+
             <div className="max-w-4xl mx-auto bg-white border border-gray-200 sm:rounded-lg overflow-hidden">
                 {/* Cover Image/Banner */}
                 <div className="w-full aspect-[3/1] bg-[#0a66c2] relative overflow-hidden group">

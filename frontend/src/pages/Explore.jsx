@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import api from '../services/api';
 import { Loader2, Flame, Hash } from 'lucide-react';
 import { useEffect } from 'react';
-import PostCard from '../components/post/PostCard';
+import ExploreCard from '../components/post/ExploreCard';
 
 const Explore = () => {
     useEffect(() => {
@@ -46,10 +46,10 @@ const Explore = () => {
                 </p>
             </div>
 
-            {/* Feed Layout matching Home */}
-            <div className="max-w-3xl mx-auto space-y-6">
+            {/* Instagram Style Square Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-4 md:gap-6">
                 {posts.map((post) => (
-                    <PostCard key={post._id} post={post} />
+                    <ExploreCard key={post._id} post={post} />
                 ))}
             </div>
 

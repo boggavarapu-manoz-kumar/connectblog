@@ -33,20 +33,20 @@ const PostCard = ({ post, onPostUpdate }) => {
             const userId = user?._id || user?.id;
             if (!userId) return;
 
-            // 1. Cancel all potentially conflicting queries
             await Promise.all([
                 queryClient.cancelQueries({ queryKey: ['posts-feed'] }),
                 queryClient.cancelQueries({ queryKey: ['post', post._id] }),
                 queryClient.cancelQueries({ queryKey: ['profile-posts'] }),
-                queryClient.cancelQueries({ queryKey: ['profile-private'] })
+                queryClient.cancelQueries({ queryKey: ['profile-private'] }),
+                queryClient.cancelQueries({ queryKey: ['explore-trending'] })
             ]);
 
-            // 2. Comprehensive Snapshots for rollback
             const snapshots = {
                 feeds: queryClient.getQueriesData({ queryKey: ['posts-feed'] }),
                 singlePost: queryClient.getQueryData(['post', post._id]),
                 profilePosts: queryClient.getQueriesData({ queryKey: ['profile-posts'] }),
-                profilePrivate: queryClient.getQueriesData({ queryKey: ['profile-private'] })
+                profilePrivate: queryClient.getQueriesData({ queryKey: ['profile-private'] }),
+                explore: queryClient.getQueriesData({ queryKey: ['explore-trending'] })
             };
 
             const updatePostLikes = (p) => {
@@ -91,6 +91,12 @@ const PostCard = ({ post, onPostUpdate }) => {
                 };
             });
 
+            // 7. Optimistic Update: EXPLORE TRENDING
+            queryClient.setQueriesData({ queryKey: ['explore-trending'] }, old => {
+                if (!old || !old.posts) return old;
+                return { ...old, posts: old.posts.map(updatePostLikes) };
+            });
+
             return { snapshots };
         },
         onError: (err, variables, context) => {
@@ -105,8 +111,18 @@ const PostCard = ({ post, onPostUpdate }) => {
                     queryClient.setQueryData(queryKey, data);
                 });
             }
+            if (context?.snapshots?.profilePrivate) {
+                context.snapshots.profilePrivate.forEach(([queryKey, data]) => {
+                    queryClient.setQueryData(queryKey, data);
+                });
+            }
             if (context?.snapshots?.singlePost) {
                 queryClient.setQueryData(['post', post._id], context.snapshots.singlePost);
+            }
+            if (context?.snapshots?.explore) {
+                context.snapshots.explore.forEach(([queryKey, data]) => {
+                    queryClient.setQueryData(queryKey, data);
+                });
             }
             if (err.response?.status !== 400 && err.response?.status !== 401) {
                 toast.error(err.response?.data?.message || "Network sync delayed");

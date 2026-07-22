@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import api from '../services/api';
 import { Loader2, Flame, Hash } from 'lucide-react';
 import { useEffect } from 'react';
+import PostCard from '../components/post/PostCard';
 
 const Explore = () => {
     useEffect(() => {
@@ -45,81 +46,11 @@ const Explore = () => {
                 </p>
             </div>
 
-            {/* Responsive Masonry Layout */}
-            <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-6 space-y-6">
-                {posts.map((post) => {
-                    const hasImage = post.image;
-
-                    return (
-                        <Link
-                            key={post._id}
-                            to={`/posts/${post._id}`}
-                            className="break-inside-avoid group flex flex-col relative rounded-3xl overflow-hidden bg-white shadow-sm hover:shadow-2xl border border-gray-100 transition-all duration-300 hover:-translate-y-1"
-                        >
-                            {hasImage ? (
-                                <div className="relative w-full h-auto overflow-hidden">
-                                    <img
-                                        loading="lazy"
-                                        src={post.image}
-                                        alt={post.title}
-                                        className="w-full h-auto object-cover transition-transform duration-700 group-hover:scale-110"
-                                        loading="lazy"
-                                    />
-                                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent p-5 pt-16">
-                                        <h3 className="text-white font-bold leading-tight line-clamp-2 text-lg drop-shadow-md">
-                                            {post.title}
-                                        </h3>
-                                        <div className="flex items-center gap-2 mt-3">
-                                            <img
-                                                loading="lazy"
-                                                src={post.author.profilePic || `https://ui-avatars.com/api/?name=${encodeURIComponent(post.author.username)}&background=0ea5e9&color=fff&bold=true`}
-                                                className="w-7 h-7 rounded-full object-cover border-2 border-white/80 shadow-sm"
-                                                alt={post.author.username}
-                                            />
-                                            <span className="text-gray-100 text-sm font-medium drop-shadow-md">
-                                                @{post.author.username}
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="p-6 md:p-8 flex flex-col h-full bg-gradient-to-br from-indigo-50/50 via-white to-blue-50/30">
-                                    <div className="flex-1">
-                                        {post.hashtags && post.hashtags[0] && (
-                                            <div className="text-xs font-black text-indigo-600 flex items-center gap-1 mb-3 uppercase tracking-widest bg-indigo-100/50 w-fit px-2 py-1 rounded-md">
-                                                <Hash size={12} /> {post.hashtags[0]}
-                                            </div>
-                                        )}
-                                        <h3 className="font-connect font-black text-2xl text-gray-900 group-hover:text-indigo-600 transition-colors line-clamp-3 leading-snug">
-                                            {post.title}
-                                        </h3>
-                                        {post.content && (
-                                            <div
-                                                className="mt-4 text-sm text-gray-600 leading-relaxed line-clamp-4 prose prose-sm overflow-hidden"
-                                                dangerouslySetInnerHTML={{
-                                                    __html: post.content.substring(0, 200) + '...'
-                                                }}
-                                            />
-                                        )}
-                                    </div>
-                                    <div className="mt-6 pt-5 border-t border-gray-100 flex items-center justify-between">
-                                        <div className="flex items-center gap-3">
-                                            <img
-                                                loading="lazy"
-                                                src={post.author.profilePic || `https://ui-avatars.com/api/?name=${encodeURIComponent(post.author.username)}&background=0ea5e9&color=fff&bold=true`}
-                                                className="w-8 h-8 rounded-full object-cover shadow-sm"
-                                                alt={post.author.username}
-                                            />
-                                            <span className="text-gray-900 font-bold text-sm">
-                                                @{post.author.username}
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                        </Link>
-                    )
-                })}
+            {/* Feed Layout matching Home */}
+            <div className="max-w-3xl mx-auto space-y-6">
+                {posts.map((post) => (
+                    <PostCard key={post._id} post={post} />
+                ))}
             </div>
 
             {posts.length === 0 && (

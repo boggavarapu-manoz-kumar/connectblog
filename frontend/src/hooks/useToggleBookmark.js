@@ -43,8 +43,8 @@ export const useToggleBookmark = () => {
             });
 
             queryClient.setQueriesData({ queryKey: ['explore-trending'] }, (old) => {
-                if (!old) return old;
-                return old.map(updatePostBookmark);
+                if (!old || !old.posts) return old;
+                return { ...old, posts: old.posts.map(updatePostBookmark) };
             });
 
             return { snapshots };

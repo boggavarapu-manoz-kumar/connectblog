@@ -12,6 +12,12 @@ class ErrorBoundary extends React.Component {
 
     componentDidCatch(error, errorInfo) {
         console.error('Uncaught error:', error, errorInfo);
+        // Clear persistent cache in case corrupted data caused the crash
+        try {
+            localStorage.removeItem('CONNECT_BLOG_OFFLINE_CACHE');
+        } catch (e) {
+            console.error('Failed to clear cache:', e);
+        }
     }
 
     render() {

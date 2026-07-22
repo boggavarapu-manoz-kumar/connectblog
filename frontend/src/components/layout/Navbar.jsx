@@ -10,17 +10,19 @@ import {
     Bookmark,
     ChevronDown,
     Bell,
-    Compass
+    Compass,
+    Server
 } from 'lucide-react';
 import SearchBar from './SearchBar';
 import { useSocket } from '../../context/SocketContext';
 import { formatImageUrl } from '../../utils/formatUrl';
-
+import ServerMetricsModal from './ServerMetricsModal';
 
 const Navbar = () => {
     const { user, logout } = useAuth();
     const navigate = useNavigate();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [isMetricsModalOpen, setIsMetricsModalOpen] = useState(false);
     const menuRef = useRef(null);
     const { unreadCount } = useSocket();
 
@@ -67,6 +69,15 @@ const Navbar = () => {
 
                     {/* Navbar Action Icons */}
                     <div className="flex items-center space-x-2 sm:space-x-4">
+                        <button
+                            onClick={() => setIsMetricsModalOpen(true)}
+                            className="p-2 text-green-500 hover:text-green-600 hover:bg-green-50 rounded-full transition-colors mr-1 sm:mr-0 relative"
+                            title="Server Status & Metrics"
+                        >
+                            <Server size={20} strokeWidth={2.5} />
+                            <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white shadow-sm animate-pulse"></span>
+                        </button>
+
                         <Link
                             to="/explore"
                             className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-full transition-colors mr-1 sm:mr-0"
@@ -191,6 +202,11 @@ const Navbar = () => {
                     </div>
                 </div>
             </div>
+            
+            <ServerMetricsModal 
+                isOpen={isMetricsModalOpen} 
+                onClose={() => setIsMetricsModalOpen(false)} 
+            />
         </nav>
     );
 };

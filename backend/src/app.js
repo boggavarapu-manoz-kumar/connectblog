@@ -65,16 +65,7 @@ app.get('/', (req, res) => {
     res.send('ConnectBlog API is running...');
 });
 
-// ─── Health Check Endpoint (used by keep-alive pinger) ────────────────────────
-app.get('/api/health', (req, res) => {
-    res.status(200).json({
-        status: 'ok',
-        service: 'ConnectBlog API',
-        uptime: `${Math.floor(process.uptime())}s`,
-        timestamp: new Date().toISOString(),
-        message: '🟢 Server is awake and healthy'
-    });
-});
+app.use('/api/health', require('./routes/health.routes'));
 
 const { errorHandler, notFound } = require('./middleware/error.middleware');
 
